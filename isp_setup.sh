@@ -1,39 +1,46 @@
 #!/bin/bash
-echo "=== Настройка ISP ==="
+echo "=== ISP ==="
 
-# 1. Имя хоста
-hostnamectl set-hostname isp.au-team.irpo; exec bash
+hostnamectl set-hostname isp.au-team.irpo
 
-# 2. Сеть. Создаём каталоги и настройки для интерфейсов
-# Внешний (ens19) — по DHCP, это работает "из коробки", но пропишем для порядка
-mkdir -p /etc/net/ifaces/ens19
-echo "BOOTPROTO=dhcp" > /etc/net/ifaces/ens19/options
+# Сеть
+mkdir -p /etc/net/ifaces/enp7s1
+echo "BOOTPROTO=dhcp" > /etc/net/ifaces/enp7s1/options
 
-# Внутренний в сторону HQ (ens20)
-cp -r /etc/net/ifaces/ens19 /etc/net/ifaces/ens20
-sed -i 's/BOOTPROTO=dhcp/BOOTPROTO=static/' /etc/net/ifaces/ens20/options
-echo "172.16.4.1/28" > /etc/net/ifaces/ens20/ipv4address
-echo "nameserver 8.8.8.8" > /etc/net/ifaces/ens20/resolv.conf
+mkdir -p /etc/net/ifaces/enp7s2
+cat > /etc/net/ifaces/enp7s2/options <<EOF
+BOOTPROTO=static
+TYPE=eth
+NM_CONTROLLED=no
+SYSTEMD_CONTROLLED=yes
+DISABLED=no
+EOF
+echo "172.16.4.1/28" > /etc/net/ifaces/enp7s2/ipv4address
 
-# Внутренний в сторону BR (ens21)
-cp -r /etc/net/ifaces/ens20 /etc/net/ifaces/ens21
-echo "172.16.5.1/28" > /etc/net/ifaces/ens21/ipv4address
+mkdir -p /etc/net/ifaces/enp7s3
+cat > /etc/net/ifaces/enp7s3/options <<EOF
+BOOTPROTO=static
+TYPE=eth
+NM_CONTROLLED=no
+SYSTEMD_CONTROLLED=yes
+DISABLED=no
+EOF
+echo "172.16.5.1/28" > /etc/net/ifaces/enp7s3/ipv4address
 
-# Применяем сеть
+echo "nameserver 8.8.8.8" > /etc/net/ifaces/enp7s1/resolv.conf
 systemctl restart network
 
-# 3. Включаем форвардинг пакетов
-echo "net.ipv4.ip_forward = 1" >> /etc/net/sysctl.conf
-sysctl -p
+# Форвардинг
+echo 1 > /proc/sys/net/ipv4/ip_forward
 
-# 4. Настройка NAT (маскарадинг для выхода в интернет)
+# NAT
 apt-get update && apt-get install -y iptables
-iptables -t nat -A POSTROUTING -o ens19 -j MASQUERADE
-iptables-save >> /etc/sysconfig/iptables
+iptables -t nat -A POSTROUTING -o enp7s1 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables
 systemctl enable --now iptables
 
-# 5. Установка временной зоны
+# Время
 apt-get install -y tzdata
 timedatectl set-timezone Asia/Yekaterinburg
 
-echo "=== ISP настроен. Ожидание пиров... ==="
+echo "=== ISP готов ==="
