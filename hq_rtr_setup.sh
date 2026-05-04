@@ -79,6 +79,12 @@ systemctl enable --now iptables
 # Форвардинг
 echo 1 > /proc/sys/net/ipv4/ip_forward
 
+# NAT
+apt-get update && apt-get install -y iptables
+iptables -t nat -A POSTROUTING -o enp7s1 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables
+systemctl enable --now iptables
+
 # FRR + OSPF
 apt-get update && apt-get install -y frr
 sed -i 's/^ospfd=no/ospfd=yes/' /etc/frr/daemons
@@ -88,18 +94,12 @@ vtysh <<VTYSH
 conf t
 router ospf
  ospf router-id 10.10.10.1
- passive-interface default
- no passive-interface gre1
+ network 192.168.100.0/30 area 0
+ network 192.168.100.65/28 area 0
+ network 192.168.100.80/29 area 0
 interface gre1
- ip ospf area 0
  ip ospf authentication message-digest
  ip ospf message-digest-key 1 md5 P@ssw0rd
-interface enp7s2.100
- ip ospf area 0
-interface enp7s2.200
- ip ospf area 0
-interface enp7s2.999
- ip ospf area 0
 do wr mem
 VTYSH
 
