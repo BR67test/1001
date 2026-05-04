@@ -41,6 +41,12 @@ systemctl enable --now iptables
 # Форвардинг
 echo 1 > /proc/sys/net/ipv4/ip_forward
 
+# NAT
+apt-get update && apt-get install -y iptables
+iptables -t nat -A POSTROUTING -o enp7s1 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables
+systemctl enable --now iptables
+
 # FRR + OSPF
 apt-get update && apt-get install -y frr
 sed -i 's/^ospfd=no/ospfd=yes/' /etc/frr/daemons
@@ -50,20 +56,17 @@ vtysh <<VTYSH
 conf t
 router ospf
  ospf router-id 10.10.10.2
- passive-interface default
- no passive-interface gre1
+ network 192.168.200.0/27 area 0
+ network 10.10.10.0/30 area 0
 interface gre1
- ip ospf area 0
  ip ospf authentication message-digest
  ip ospf message-digest-key 1 md5 P@ssw0rd
-interface enp7s2
- ip ospf area 0
 do wr mem
 VTYSH
 
 # Пользователь
 useradd net_admin -u 1010
-echo "net_admin:P@\$\$word" | chpasswd
+echo "net_admin:P@ssw0rd" | chpasswd
 echo "net_admin ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Время
