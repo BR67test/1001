@@ -1,11 +1,44 @@
 #!/bin/bash
-echo "=== Настройка HQ-CLI ==="
+echo "=== HQ-CLI ==="
 
-hostnamectl set-hostname hq-cli.au-team.irpo; exec bash
+hostnamectl set-hostname hq-cli.au-team.irpo
 
-# Сеть на клиенте будет по DHCP, поэтому настраиваем получение адреса
-mkdir -p /etc/net/ifaces/ens19
-echo "BOOTPROTO=dhcp" > /etc/net/ifaces/ens19/options
+# enp7s1 — manual
+mkdir -p /etc/net/ifaces/enp7s1
+cat > /etc/net/ifaces/enp7s1/options <<EOF
+BOOTPROTO=manual
+TYPE=eth
+NM_CONTROLLED=no
+SYSTEMD_CONTROLLED=yes
+DISABLED=no
+EOF
+
+# VLAN 200 (DHCP)
+mkdir -p /etc/net/ifaces/enp7s1.200
+cat > /etc/net/ifaces/enp7s1.200/options <<EOF
+TYPE=vlan
+HOST=enp7s1
+VID=200
+BOOTPROTO=dhcp
+NM_CONTROLLED=no
+SYSTEMD_CONTROLLED=yes
+DISABLED=no
+EOF
+
 systemctl restart network
 
-echo "=== HQ-CLI настроен (DHCP) ==="
+# Пользователь
+useradd sshuser
+echo "sshuser:P@ssw0rd" | chpasswd
+usermod -aG wheel sshuser
+echo "sshuser ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# SSH
+apt-get update && apt-get install -y openssh-server
+systemctl enable --now sshd
+
+# Время
+apt-get install -y tzdata
+timedatectl set-timezone Asia/Yekaterinburg
+
+echo "=== HQ-CLI готов ==="
