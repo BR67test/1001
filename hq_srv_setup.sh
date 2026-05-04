@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "=== Настройка HQ-SRV ==="
 
-hostnamectl set-hostname hq-srv.au-team.irpo; exec bash
+hostnamectl set-hostname hq-srv.au-team.irpo
 
 # 1. Настройка сети
 mkdir -p /etc/net/ifaces/ens19
