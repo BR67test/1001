@@ -70,9 +70,9 @@ echo "192.168.100.81/29" > /etc/net/ifaces/enp7s2.999/ipv4address
 systemctl restart network
 
 # GRE-туннель
-ip tunnel add gre1 mode gre local 172.16.4.14 remote 172.16.5.14 ttl 255
-ip link set gre1 up
-ip addr add 10.10.10.1/30 dev gre1
+ip tunnel add gre0 mode gre local 172.16.4.14 remote 172.16.5.14 ttl 255
+ip link set gre0 up
+ip addr add 10.10.10.1/30 dev gre0
 
 # NAT
 apt-get update && apt-get install -y iptables
@@ -97,7 +97,7 @@ router ospf
  network 192.168.100.1/26 area 0
  network 192.168.100.65/28 area 0
  network 192.168.100.81/29 area 0
-interface gre1
+interface gre0
  ip ospf authentication message-digest
  ip ospf message-digest-key 1 md5 P@ssw0rd
 do wr mem
