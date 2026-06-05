@@ -4,11 +4,11 @@ echo "=== Настройка HQ-SRV ==="
 hostnamectl set-hostname hq-srv.au-team.irpo
 
 # 1. Настройка сети
-mkdir -p /etc/net/ifaces/ens19
-echo "BOOTPROTO=static" > /etc/net/ifaces/ens19/options
-echo "192.168.100.2/26" > /etc/net/ifaces/ens19/ipv4address
-echo "default via 192.168.100.1" > /etc/net/ifaces/ens19/ipv4route
-echo "nameserver 77.88.8.8" > /etc/net/ifaces/ens19/resolv.conf
+mkdir -p /etc/net/ifaces/enp7s1
+echo "BOOTPROTO=static" > /etc/net/ifaces/enp7s1/options
+echo "192.168.100.2/26" > /etc/net/ifaces/enp7s1/ipv4address
+echo "default via 192.168.100.1" > /etc/net/ifaces/enp7s1/ipv4route
+echo "nameserver 77.88.8.8" > /etc/net/ifaces/enp7s1/resolv.conf
 systemctl restart network
 
 # 2. DNS-сервер (Bind9)
