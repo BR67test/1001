@@ -34,6 +34,7 @@ ip link set gre1 up
 ip addr add 10.10.10.2/30 dev gre1
 
 # NAT
+apt-get update && apt-get install -y iptables
 iptables -t nat -A POSTROUTING -s 192.168.200.0/27 -o enp7s1 -j MASQUERADE
 iptables-save > /etc/sysconfig/iptables
 systemctl enable --now iptables
