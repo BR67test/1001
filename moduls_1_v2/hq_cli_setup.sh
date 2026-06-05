@@ -3,7 +3,7 @@ echo "=== HQ-CLI ==="
 
 hostnamectl set-hostname hq-cli.au-team.irpo
 
-# Сеть
+# Сеть (VLAN 200, DHCP)
 mkdir -p /etc/net/ifaces/enp7s1
 cat > /etc/net/ifaces/enp7s1/options <<EOF
 BOOTPROTO=manual
@@ -26,7 +26,7 @@ EOF
 
 systemctl restart network
 
-# Пользователь
+# Пользователь sshuser
 useradd sshuser
 echo "sshuser:P@ssw0rd" | chpasswd
 usermod -aG wheel sshuser
@@ -37,6 +37,7 @@ apt-get update && apt-get install -y openssh-server
 systemctl enable --now sshd
 
 # Время
+apt-get install -y tzdata
 timedatectl set-timezone Asia/Yekaterinburg
 
 echo "=== HQ-CLI готов ==="
