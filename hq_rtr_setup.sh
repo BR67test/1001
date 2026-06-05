@@ -88,18 +88,14 @@ vtysh <<VTYSH
 conf t
 router ospf
  ospf router-id 10.10.10.1
- passive-interface default
- no passive-interface gre1
+ network 10.10.10.0/30 area 0
+ network 172.16.4.0/28 area 0
+ network 192.168.100.1/26 area 0
+ network 192.168.100.65/28 area 0
+ network 192.168.100.81/29 area 0
 interface gre1
- ip ospf area 0
  ip ospf authentication message-digest
  ip ospf message-digest-key 1 md5 P@ssw0rd
-interface enp7s2.100
- ip ospf area 0
-interface enp7s2.200
- ip ospf area 0
-interface enp7s2.999
- ip ospf area 0
 do wr mem
 VTYSH
 
