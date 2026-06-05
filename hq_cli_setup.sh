@@ -3,7 +3,7 @@ echo "=== HQ-CLI ==="
 
 hostnamectl set-hostname hq-cli.au-team.irpo
 
-# enp7s1 — manual
+# Сеть
 mkdir -p /etc/net/ifaces/enp7s1
 cat > /etc/net/ifaces/enp7s1/options <<EOF
 BOOTPROTO=manual
@@ -13,7 +13,6 @@ SYSTEMD_CONTROLLED=yes
 DISABLED=no
 EOF
 
-# VLAN 200 (DHCP)
 mkdir -p /etc/net/ifaces/enp7s1.200
 cat > /etc/net/ifaces/enp7s1.200/options <<EOF
 TYPE=vlan
@@ -38,7 +37,6 @@ apt-get update && apt-get install -y openssh-server
 systemctl enable --now sshd
 
 # Время
-apt-get install -y tzdata
 timedatectl set-timezone Asia/Yekaterinburg
 
 echo "=== HQ-CLI готов ==="
