@@ -13,10 +13,10 @@ iptables-save > /etc/sysconfig/iptables
 # ============================================
 if [ -f /etc/dhcp/dhcpd.conf ]; then
     # Замена DNS сервера
-    sed -i 's/option domain-name-servers 192.168.100.2;/option domain-name-servers 192.168.0.2;/g' /etc/dhcp/dhcpd.conf
+    sed -i 's/dhcp-option=6,192.168.100.2/dhcp-option=6,192.168.0.2/' /etc/dnsmasq.con
     
     # Перезапуск DHCP
-    systemctl restart dhcpd
+    systemctl restart dnsmasq
     
     echo "DNS в DHCP изменён на 192.168.0.2 (BR-SRV)"
 else
