@@ -11,7 +11,7 @@ iptables-save > /etc/sysconfig/iptables
 # ============================================
 # 2. Смена DNS-сервера в DHCP (с HQ-SRV на BR-SRV)
 # ============================================
-if [ -f /etc/dhcp/dhcpd.conf ]; then
+if [ -f /etc/dnsmasq.conf ]; then
     # Замена DNS сервера
     sed -i 's/dhcp-option=6,192.168.100.2/dhcp-option=6,192.168.0.2/' /etc/dnsmasq.con
     
