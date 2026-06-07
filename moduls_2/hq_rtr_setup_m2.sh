@@ -13,7 +13,7 @@ iptables-save > /etc/sysconfig/iptables
 # ============================================
 if [ -f /etc/dnsmasq.conf ]; then
     # Замена DNS сервера
-    sed -i 's/dhcp-option=6,192.168.100.2/dhcp-option=6,192.168.0.2/' /etc/dnsmasq.con
+    sed -i 's/dhcp-option=6,192.168.100.2/dhcp-option=6,192.168.0.2/' /etc/dnsmasq.conf
     
     # Перезапуск DHCP
     systemctl restart dnsmasq
