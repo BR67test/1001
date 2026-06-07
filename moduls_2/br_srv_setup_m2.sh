@@ -33,7 +33,8 @@ samba-tool domain provision \
     --server-role=dc \
     --dns-backend=SAMBA_INTERNAL \
     --adminpass="P@ssw0rd" \
-    --use-rfc2307
+    --use-rfc2307 \
+    --dns-forwarder=192.168.100.2
 
 # Копирование Kerberos конфигурации
 if [ -f /var/lib/samba/private/krb5.conf ]; then
