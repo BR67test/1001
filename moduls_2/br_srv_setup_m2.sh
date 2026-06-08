@@ -5,7 +5,7 @@ echo "=== BR-SRV (Модуль 2) ==="
 # 1. Временная настройка DNS для установки
 # ============================================
 cat > /etc/resolv.conf <<EOF
-nameserver 8.8.8.8
+nameserver 127.0.0.1
 nameserver 77.88.8.8
 EOF
 
@@ -33,8 +33,7 @@ samba-tool domain provision \
     --server-role=dc \
     --dns-backend=SAMBA_INTERNAL \
     --adminpass="P@ssw0rd" \
-    --use-rfc2307 \
-    --dns-forwarder=192.168.100.2
+    --use-rfc2307 
 
 # Копирование Kerberos конфигурации
 if [ -f /var/lib/samba/private/krb5.conf ]; then
