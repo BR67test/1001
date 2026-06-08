@@ -163,10 +163,14 @@ host_key_checking = False
 EOF
 
 cat > /etc/ansible/hosts <<EOF
+# Все устройства используют порт 2026
 HQ-SRV ansible_host=192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
-HQ-CLI ansible_host=192.168.200.2 ansible_user=user ansible_password=resu
-HQ-RTR ansible_host=10.10.10.1 ansible_user=user ansible_password=resu
-BR-RTR ansible_host=192.168.0.1 ansible_user=user ansible_password=resu
+HQ-CLI ansible_host=192.168.200.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
+BR-SRV ansible_host=192.168.0.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
+
+# Маршрутизаторы (если они Linux с SSH)
+HQ-RTR ansible_host=10.10.10.1 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=2026
+BR-RTR ansible_host=10.10.10.2 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=2026
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
