@@ -69,7 +69,7 @@ chmod 440 /etc/sudoers.d/hq
 apt-get install -y nfs-client
 mkdir -p /mnt/nfs
 
-echo "192.168.100.2:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
+echo "192.168.1.10:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
 mount -a
 
 echo "=== Проверка NFS ==="
