@@ -2,51 +2,41 @@
 echo "=== HQ-RTR (Модуль 2) ==="
 
 # ============================================
-# 1. Проброс портов на HQ-SRV
+# 0. SSH настройка (порт 2026)
 # ============================================
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.100.2:2026
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.100.2:80
-iptables-save > /etc/sysconfig/iptables
+
+apt-get update && apt-get install -y openssh-server
+
+# Пользователь net_admin (из модуля 1)
+echo "net_admin:P@ssw0rd" | chpasswd
+
+cat > /etc/openssh/sshd_config <<EOF
+Port 2026
+MaxAuthTries 3
+PermitRootLogin no
+AllowUsers net_admin
+Subsystem sftp /usr/libexec/openssh/sftp-server
+EOF
+
+systemctl enable --now sshd
 
 # ============================================
-# 2. Смена DNS-сервера в DHCP (с HQ-SRV на BR-SRV)
+# 1. Смена DNS-сервера в DHCP
 # ============================================
-if [ -f /etc/dnsmasq.conf ]; then
-    # Замена DNS сервера
-    sed -i 's/dhcp-option=6,192.168.100.2/dhcp-option=6,192.168.0.2,192.168.100.2/' /etc/dnsmasq.conf
-    
-    # Перезапуск DHCP
+
+if [ -f /etc/dhcp/dhcpd.conf ]; then
+    sed -i 's/option domain-name-servers 192.168.100.2;/option domain-name-servers 192.168.0.2;/g' /etc/dhcp/dhcpd.conf
+    systemctl restart dhcpd
+    echo "ISC DHCP обновлён"
+elif [ -f /etc/dnsmasq.conf ]; then
+    sed -i 's/dhcp-option=6,192.168.100.2/dhcp-option=6,192.168.0.2/' /etc/dnsmasq.conf
     systemctl restart dnsmasq
-    
-    echo "DNS в DHCP изменён на 192.168.0.2 (BR-SRV)"
-else
-    echo "Файл /etc/dhcp/dhcpd.conf не найден"
+    echo "dnsmasq обновлён"
 fi
 
-# ============================================
-# 3. NTP-клиент (сервер — ISP)
-# ============================================
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
-systemctl restart chronyd
+echo "=== Текущая конфигурация DHCP ==="
+cat /etc/dnsmasq.conf 2>/dev/null | grep dhcp-option
+cat /etc/dhcp/dhcpd.conf 2>/dev/null | grep domain-name-servers
 
-# ============================================
-# 4. Проверка
-# ============================================
-echo ""
-echo "=== ПРОВЕРКА ==="
-echo ""
-
-echo "Правила NAT:"
-iptables -t nat -L -n | grep -E "2026|8080" || echo "Правила не найдены"
-
-echo ""
-echo "NTP:"
-chronyc sources 2>/dev/null | head -5
-
-echo ""
-echo "DHCP конфигурация:"
-grep "option domain-name-servers" /etc/dhcp/dhcpd.conf 2>/dev/null
-
-echo ""
-echo "=== HQ-RTR обновлен ==="
+echo "=== HQ-RTR (Модуль 2) готов ==="
+echo "SSH: port 2026, user: net_admin, password: P@ssw0rd"
