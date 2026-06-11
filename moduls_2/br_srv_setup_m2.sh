@@ -2,117 +2,123 @@
 echo "=== BR-SRV (Модуль 2) ==="
 
 # ============================================
-# 1. Временная настройка DNS для установки
+# 0. SSH настройка (порт 2026)
 # ============================================
-cat > /etc/resolv.conf <<EOF
-nameserver 127.0.0.1
-nameserver 77.88.8.8
+
+apt-get update && apt-get install -y openssh-server
+
+useradd sshuser -u 2026 2>/dev/null
+echo "sshuser:P@ssw0rd" | chpasswd
+usermod -aG wheel sshuser
+
+cat > /etc/openssh/sshd_config <<EOF
+Port 2026
+MaxAuthTries 3
+PermitRootLogin no
+AllowUsers sshuser
+Subsystem sftp /usr/libexec/openssh/sftp-server
 EOF
 
-# ============================================
-# 2. Настройка времени
-# ============================================
-timedatectl set-timezone Europe/Moscow
+systemctl enable --now sshd
 
 # ============================================
-# 3. Установка Samba DC
+# 1. Установка Samba DC
 # ============================================
-apt-get update
+
 apt-get install -y task-samba-dc
 
-# Очистка старых конфигураций
+# Очистка старых конфигов
 rm -f /etc/samba/smb.conf
 rm -rf /var/lib/samba/
 rm -rf /var/cache/samba/
 mkdir -p /var/lib/samba/sysvol
 
-# Provision домена (без --dns-forwarder)
+# Provision домена
 samba-tool domain provision \
     --realm=AU-TEAM.IRPO \
     --domain=AU-TEAM \
     --server-role=dc \
     --dns-backend=SAMBA_INTERNAL \
-    --adminpass="P@ssw0rd" \
-    --use-rfc2307 \
+    --adminpass='P@ssw0rd' \
+    --use-rfc2307
 
-# Копирование Kerberos конфигурации
-if [ -f /var/lib/samba/private/krb5.conf ]; then
-    cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
-fi
+# Копирование Kerberos конфига
+cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 
 # Настройка DNS
-cat > /etc/resolv.conf <<EOF
+cat > /etc/net/ifaces/enp7s1/resolv.conf <<EOF
 search au-team.irpo
 nameserver 127.0.0.1
-nameserver 8.8.8.8
 EOF
+
+systemctl restart network
 
 # Запуск Samba
 systemctl enable --now samba
 sleep 5
 
 # ============================================
-# 4. Отключение политики сложности паролей
+# 2. Проверка Samba
 # ============================================
+
+echo "=== Проверка Samba ==="
+samba-tool domain info 127.0.0.1
+
+# Проверка Kerberos
+echo "P@ssw0rd" | kinit Administrator@AU-TEAM.IRPO
+klist
+
+# ============================================
+# 3. Отключение политики сложности паролей
+# ============================================
+
 samba-tool domain passwordsettings set --complexity=off
 samba-tool domain passwordsettings set --history-length=0
 samba-tool domain passwordsettings set --min-pwd-length=3
 
 # ============================================
-# 5. Создание группы и пользователей
+# 4. Создание группы и пользователей
 # ============================================
-samba-tool group add hq 2>/dev/null || echo "Группа hq уже существует"
+
+samba-tool group add hq
 
 for i in {1..5}; do
-    # Сложный пароль для AD
-    PASS="P@ssw0rd${i}!"
-    
-    samba-tool user add hquser$i $PASS 2>/dev/null || echo "Пользователь hquser$i уже существует"
-    samba-tool user setexpiry hquser$i --noexpiry
-    samba-tool group addmembers "hq" hquser$i
+    samba-tool user add "hquser$i" "P@ssw0rd${i}!"
+    samba-tool user setexpiry "hquser$i" --noexpiry
+    samba-tool group addmembers "hq" "hquser$i"
 done
 
-echo ""
 echo "=== Созданные пользователи ==="
 samba-tool group listmembers hq
 
 # ============================================
-# 6. Установка Docker и Docker Compose
+# 5. Установка Docker
 # ============================================
+
 apt-get install -y docker-engine docker-compose-v2
 systemctl enable --now docker
 
 # ============================================
-# 7. Монтирование ISO и загрузка Docker образов
+# 6. Загрузка Docker образов с ISO
 # ============================================
-# Поиск ISO файла
-ISO_PATH=$(find / -name "*.iso" -path "*/Additional*" 2>/dev/null | head -1)
 
+ISO_PATH=$(find / -name "*.iso" 2>/dev/null | head -1)
 if [ -n "$ISO_PATH" ]; then
-    echo "Найден ISO: $ISO_PATH"
-    mkdir -p /mnt/additional
-    mount -o loop "$ISO_PATH" /mnt/additional
-    
-    # Загрузка MariaDB
-    if [ -f /mnt/additional/docker/mariadb_latest.tar ]; then
-        docker load < /mnt/additional/docker/mariadb_latest.tar
-    else
-        find /mnt/additional -name "*mariadb*.tar" -type f -exec docker load < {} \; 2>/dev/null
-    fi
-    
-    # Загрузка site:latest
-    if [ -f /mnt/additional/docker/site_latest.tar ]; then
-        docker load < /mnt/additional/docker/site_latest.tar
-    else
-        find /mnt/additional -name "*site*.tar" -type f -exec docker load < {} \; 2>/dev/null
-    fi
-else
-    echo "ISO с Docker образами не найден. Пропуск загрузки образов."
+    mkdir -p /mnt/iso
+    mount -o loop "$ISO_PATH" /mnt/iso 2>/dev/null
+fi
+
+if [ -f /mnt/iso/docker/site_latest.tar ]; then
+    docker load < /mnt/iso/docker/site_latest.tar
+fi
+if [ -f /mnt/iso/docker/mariadb_latest.tar ]; then
+    docker load < /mnt/iso/docker/mariadb_latest.tar
 fi
 
 # ============================================
-# 8. Docker Compose
+# 7. Docker Compose
 # ============================================
+
 cat > /root/compose.yaml <<EOF
 services:
   database:
@@ -144,86 +150,21 @@ services:
       - database
 EOF
 
-# Запуск контейнеров
 cd /root
-docker compose up -d 2>/dev/null || echo "Ошибка запуска контейнеров. Проверьте образы."
+docker compose up -d
 
 # ============================================
-# 9. Установка Ansible
+# 8. Проверка
 # ============================================
-apt-get install -y ansible sshpass
 
-mkdir -p /etc/ansible
+echo "=== Проверка Docker ==="
+docker ps
 
-cat > /etc/ansible/ansible.cfg <<EOF
-[defaults]
-inventory = /etc/ansible/hosts
-host_key_checking = False
-EOF
+echo "=== Проверка приложения ==="
+curl -s http://localhost:8080 | head -5
 
-cat > /etc/ansible/hosts <<EOF
-# Все устройства используют порт 2026
-HQ-SRV ansible_host=192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
-HQ-CLI ansible_host=192.168.200.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
-BR-SRV ansible_host=192.168.0.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
-
-# Маршрутизаторы (если они Linux с SSH)
-HQ-RTR ansible_host=10.10.10.1 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=2026
-BR-RTR ansible_host=10.10.10.2 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=2026
-
-[all:vars]
-ansible_python_interpreter=/usr/bin/python3
-EOF
-
-# ============================================
-# 10. NTP-клиент
-# ============================================
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.2.1 iburst" >> /etc/chrony.conf
-systemctl restart chronyd
-
-# ============================================
-# 11. SSH (порт 2026)
-# ============================================
-useradd sshuser -u 2026 2>/dev/null
-echo "sshuser:P@ssw0rd" | chpasswd
-usermod -aG wheel sshuser
-echo "sshuser ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-apt-get install -y openssh-server
-
-cat > /etc/openssh/sshd_config <<SSH
-Port 2026
-MaxAuthTries 2
-PermitRootLogin no
-AllowUsers sshuser
-Banner /etc/openssh/banner
-Subsystem sftp /usr/libexec/openssh/sftp-server
-SSH
-
-echo "Authorized access only" > /etc/openssh/banner
-systemctl restart sshd
-
-# ============================================
-# 12. Проверка
-# ============================================
-echo ""
-echo "=== ПРОВЕРКА ==="
-echo ""
-echo "Samba DC:"
-samba-tool domain info 127.0.0.1 2>/dev/null || echo "Ошибка: Samba не запущена"
-
-echo ""
-echo "Docker контейнеры:"
-docker ps 2>/dev/null || echo "Docker не запущен"
-
-echo ""
-echo "Ansible:"
-ansible --version 2>/dev/null | head -1 || echo "Ansible не установлен"
-
-echo ""
-echo "=== BR-SRV готов ==="
-echo ""
+echo "=== BR-SRV (Модуль 2) готов ==="
+echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
 echo "Пароли пользователей AD:"
 for i in {1..5}; do
     echo "  hquser$i : P@ssw0rd${i}!"
