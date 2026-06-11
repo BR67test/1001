@@ -25,11 +25,11 @@ systemctl enable --now sshd
 # ============================================
 
 if [ -f /etc/dhcp/dhcpd.conf ]; then
-    sed -i 's/option domain-name-servers 192.168.1.10;/option domain-name-servers 192.168.3.10;/g' /etc/dhcp/dhcpd.conf
+    sed -i 's/option domain-name-servers 192.168.1.10;/option domain-name-servers 192.168.3.10,192.168.1.10;/g' /etc/dhcp/dhcpd.conf
     systemctl restart dhcpd
     echo "ISC DHCP обновлён"
 elif [ -f /etc/dnsmasq.conf ]; then
-    sed -i 's/dhcp-option=6,192.168.1.10/dhcp-option=6,192.168.3.10/' /etc/dnsmasq.conf
+    sed -i 's/dhcp-option=6,192.168.1.10/dhcp-option=6,192.168.3.10,192.168.1.10/' /etc/dnsmasq.conf
     systemctl restart dnsmasq
     echo "dnsmasq обновлён"
 fi
