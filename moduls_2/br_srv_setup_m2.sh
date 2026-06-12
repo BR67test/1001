@@ -95,7 +95,7 @@ services:
       - "8080:8080"
     environment:
       DB_TYPE: "maria"
-      DB_HOST: "192.168.0.2"
+      DB_HOST: "192.168.3.10"
       DB_PORT: "3306"
       DB_NAME: "testdb"
       DB_USER: "testc"
