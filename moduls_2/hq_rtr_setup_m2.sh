@@ -23,7 +23,7 @@ systemctl enable --now sshd
 # ============================================
 if [ -f /etc/dnsmasq.conf ]; then
     # Устанавливаем DNS сервер BR-SRV
-    sed -i 's/dhcp-option=6,.*/dhcp-option=6,192.168.3.10/' /etc/dnsmasq.conf
+    sed -i 's/dhcp-option=6,.*/dhcp-option=6,192.168.3.10,192.168.1.10/' /etc/dnsmasq.conf
     systemctl restart dnsmasq
     echo "dnsmasq обновлён (DNS = 192.168.3.10)"
 fi
