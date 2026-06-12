@@ -33,9 +33,9 @@ systemctl restart network
 sleep 3
 
 # ============================================
-# Установка SSSD
+# Установка SSSD и ADMC
 # ============================================
-apt-get install -y task-auth-ad-sssd
+apt-get install -y task-auth-ad-sssd admc
 
 echo ""
 echo "!!! РУЧНОЙ ШАГ !!!"
@@ -47,9 +47,10 @@ echo ""
 read -p "Нажмите Enter после перезагрузки и входа в домен..."
 
 # ============================================
-# Настройка sudo для группы hq
+# Настройка sudo для группы hq (ALT Linux синтаксис)
 # ============================================
-roledad hq wheel
+# Добавление группы hq в wheel через control (аналог roledad)
+control group wheel add hq 2>/dev/null
 
 cat > /etc/sudoers.d/hq <<EOF
 Cmnd_Alias SHELLCMD = /bin/cat, /bin/grep, /usr/bin/id
@@ -61,11 +62,11 @@ chmod 440 /etc/sudoers.d/hq
 # ============================================
 # NFS-клиент
 # ============================================
-apt-get install -y nfs-client
+apt-get install -y nfs-clients
 mkdir -p /mnt/nfs
 chmod 777 /mnt/nfs
 
-echo "192.168.100.2:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
+echo "192.168.1.10:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
 mount -a
 
 # ============================================
