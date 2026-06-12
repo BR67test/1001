@@ -26,7 +26,7 @@ if [ -f /etc/dhcpd.conf ]; then
     systemctl restart dhcpd
     echo "ISC DHCP обновлён"
 else
-    echo "Файл /etc/dhcp/dhcpd.conf не найден"
+    echo "Файл /etc/dhcpd.conf не найден"
 fi
 
 # ============================================
