@@ -23,14 +23,8 @@ systemctl enable --now sshd
 # ============================================
 # /etc/hosts для доступа к сайтам
 # ============================================
-echo "172.16.1.1 web.au-team.irpo" >> /etc/hosts
-echo "172.16.2.1 docker.au-team.irpo" >> /etc/hosts
-
-# ============================================
-# Обновление DNS от DHCP
-# ============================================
-systemctl restart network
-sleep 3
+echo "172.16.1.10 web.au-team.irpo" >> /etc/hosts
+echo "172.16.2.10 docker.au-team.irpo" >> /etc/hosts
 
 # ============================================
 # Установка SSSD и ADMC
@@ -47,9 +41,8 @@ echo ""
 read -p "Нажмите Enter после перезагрузки и входа в домен..."
 
 # ============================================
-# Настройка sudo для группы hq (ALT Linux синтаксис)
+# Настройка sudo для группы hq
 # ============================================
-# Добавление группы hq в wheel через control (аналог roledad)
 control group wheel add hq 2>/dev/null
 
 cat > /etc/sudoers.d/hq <<EOF
@@ -65,7 +58,6 @@ chmod 440 /etc/sudoers.d/hq
 apt-get install -y nfs-clients
 mkdir -p /mnt/nfs
 chmod 777 /mnt/nfs
-
 echo "192.168.1.10:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
 mount -a
 
