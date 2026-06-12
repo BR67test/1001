@@ -21,12 +21,13 @@ systemctl enable --now sshd
 # ============================================
 # Смена DNS-сервера в DHCP (ISC DHCP)
 # ============================================
-if [ -f /etc/dhcpcd.conf ]; then
-    sed -i 's/option domain-name-servers 192.168.100.2;/option domain-name-servers 192.168.3.10,192.168.1.10;/g' /etc/dhcp/dhcpd.conf
-    systemctl restart dhcpd
-    echo "ISC DHCP обновлён"
+if [ -f /etc/dnsmasq.conf ]; then
+    # Замена DNS на 192.168.0.2
+    sed -i 's/dhcp-option=6,.*/dhcp-option=6,192.168.3.10,192.168.1.10/' /etc/dnsmasq.conf
+    systemctl restart dnsmasq
+    echo "dnsmasq обновлён (DNS = 192.168.1.10)"
 else
-    echo "Файл /etc/dhcpcd.conf не найден"
+    echo "Файл /etc/dnsmasq.conf не найден"
 fi
 
 # ============================================
