@@ -2,9 +2,9 @@
 echo "=== HQ-RTR (Модуль 2) ==="
 
 # ============================================
-# SSH настройка (порт 2026)
+# Установка iptables и SSH
 # ============================================
-apt-get update && apt-get install -y openssh-server
+apt-get update && apt-get install -y iptables openssh-server
 
 echo "net_admin:P@ssw0rd" | chpasswd 2>/dev/null
 
@@ -19,16 +19,12 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# Смена DNS-сервера в DHCP (ISC DHCP)
+# Удаление старого правила и добавление нового
 # ============================================
-if [ -f /etc/dnsmasq.conf ]; then
-    # Замена DNS на 192.168.0.2
-    sed -i 's/dhcp-option=6,.*/dhcp-option=6,192.168.3.10,192.168.1.10/' /etc/dnsmasq.conf
-    systemctl restart dnsmasq
-    echo "dnsmasq обновлён (DNS = 192.168.1.10)"
-else
-    echo "Файл /etc/dnsmasq.conf не найден"
-fi
+iptables -t nat -D PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.100.2:80 2>/dev/null
+iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.10:80
+iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.1.10:2026
+iptables-save > /etc/sysconfig/iptables
 
 # ============================================
 # NTP-клиент
