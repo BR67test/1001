@@ -2,9 +2,9 @@
 echo "=== BR-RTR (Модуль 2) ==="
 
 # ============================================
-# SSH настройка (порт 2026)
+# Установка iptables и SSH
 # ============================================
-apt-get update && apt-get install -y openssh-server
+apt-get update && apt-get install -y iptables openssh-server
 
 echo "net_admin:P@ssw0rd" | chpasswd 2>/dev/null
 
@@ -19,17 +19,11 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# Установка iptables (если нет)
-# ============================================
-apt-get install -y iptables
-
-# ============================================
 # Проброс портов
 # ============================================
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.3.10:2026
 iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.3.10:8080
+iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.3.10:2026
 iptables-save > /etc/sysconfig/iptables
-systemctl restart iptables
 
 # ============================================
 # NTP-клиент
