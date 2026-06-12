@@ -2,9 +2,8 @@
 echo "=== HQ-SRV (Модуль 2) ==="
 
 # ============================================
-# 0. SSH настройка (порт 2026)
+# SSH настройка (порт 2026)
 # ============================================
-
 apt-get update && apt-get install -y openssh-server
 
 useradd sshuser -u 1010 2>/dev/null
@@ -21,13 +20,11 @@ Subsystem sftp /usr/libexec/openssh/sftp-server
 EOF
 
 echo "Authorized access only" > /etc/openssh/banner
-
 systemctl enable --now sshd
 
 # ============================================
-# 1. RAID0 массив
+# RAID0
 # ============================================
-
 mdadm --create /dev/md0 -l 0 -n 2 /dev/sdb /dev/sdc --force
 mdadm --detail --scan | tee -a /etc/mdadm.conf
 mkfs.ext4 /dev/md0
@@ -36,28 +33,24 @@ echo "/dev/md0 /raid ext4 defaults 0 0" >> /etc/fstab
 mount -a
 
 # ============================================
-# 2. NFS-сервер
+# NFS-сервер (доступ только для сети HQ-CLI)
 # ============================================
-
 apt-get install -y nfs-server
 mkdir -p /raid/nfs
 chmod 777 /raid/nfs
-echo "/raid/nfs *(rw,sync,no_subtree_check)" >> /etc/exports
+echo "/raid/nfs 192.168.200.0/24(rw,no_root_squash)" > /etc/exports
 systemctl enable --now nfs-server
 
 # ============================================
-# 3. LAMP-сервер
+# LAMP-сервер
 # ============================================
-
 apt-get install -y lamp-server
 
-# ============================================
-# 4. Запуск MariaDB и создание БД
-# ============================================
-
+# Запуск MariaDB
 systemctl enable --now mariadb
 sleep 5
 
+# Создание БД и пользователя
 mariadb -u root <<MYSQL
 CREATE DATABASE IF NOT EXISTS webdb;
 CREATE USER IF NOT EXISTS 'webc'@'localhost' IDENTIFIED BY 'Password';
@@ -66,31 +59,29 @@ FLUSH PRIVILEGES;
 MYSQL
 
 # Импорт дампа (если есть)
+mount /dev/sr0 /mnt 2>/dev/null
 if [ -f /mnt/web/dump.sql ]; then
     mariadb -u webc -pPassword -D webdb < /mnt/web/dump.sql
+    cp /mnt/web/index.php /var/www/html/
+    cp /mnt/web/logo.png /var/www/html/
 fi
 
-# ============================================
-# 5. Запуск Apache
-# ============================================
+# Настройка index.php
+if [ -f /var/www/html/index.php ]; then
+    sed -i 's/$username = "user"/$username = "webc"/' /var/www/html/index.php
+    sed -i 's/$password = "password"/$password = "Password"/' /var/www/html/index.php
+    sed -i 's/$dbname = "db"/$dbname = "webdb"/' /var/www/html/index.php
+fi
 
+# Запуск Apache
 systemctl enable --now httpd2
 
 # ============================================
-# 6. Проверка
+# NTP-клиент
 # ============================================
+sed -i 's/^pool/#pool/' /etc/chrony.conf
+echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
+systemctl restart chronyd
 
-echo "=== Проверка RAID ==="
-df -h /raid
-
-echo "=== Проверка NFS ==="
-exportfs -v
-
-echo "=== Проверка MariaDB ==="
-mariadb -u webc -pPassword -e "SHOW DATABASES;"
-
-echo "=== Проверка Apache ==="
-curl -s http://localhost | head -5
-
-echo "=== HQ-SRV (Модуль 2) готов ==="
+echo "=== HQ-SRV готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
