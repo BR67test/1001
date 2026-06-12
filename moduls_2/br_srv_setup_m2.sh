@@ -36,7 +36,7 @@ samba-tool domain provision \
     --domain=AU-TEAM \
     --server-role=dc \
     --dns-backend=SAMBA_INTERNAL \
-    --dns-forwarder=77.88.8.8 \
+#    --dns-forwarder=77.88.8.8 \
     --adminpass='P@ssw0rd' \
     --use-rfc2307
 
@@ -127,10 +127,10 @@ host_key_checking = False
 EOF
 
 cat > /etc/ansible/hosts <<EOF
-HQ-SRV ansible_host=192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
-HQ-CLI ansible_host=192.168.200.2 ansible_user=user ansible_password=resu ansible_port=22
-HQ-RTR ansible_host=10.10.10.1 ansible_user=user ansible_password=resu ansible_port=22
-BR-RTR ansible_host=192.168.0.1 ansible_user=user ansible_password=resu ansible_port=22
+HQ-SRV ansible_host=192.168.1.10 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
+HQ-CLI ansible_host=192.168.2.10 ansible_user=user ansible_password=resu ansible_port=22
+HQ-RTR ansible_host=172.16.1.10 ansible_user=user ansible_password=resu ansible_port=22
+BR-RTR ansible_host=172.16.2.10 ansible_user=user ansible_password=resu ansible_port=22
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
