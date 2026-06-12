@@ -1,23 +1,20 @@
 #!/bin/bash
 echo "=== ISP (Модуль 2) ==="
 
-# NTP-сервер (дополнительно к настройкам модуля 1)
-sed -i 's/^#pool/#pool/' /etc/chrony.conf
-cat >> /etc/chrony.conf <<EOF
-server ntp0.ntp-servers.net iburst prefer minstratum 4
-local stratum 5
-allow 0.0.0.0/0
-EOF
-systemctl restart chronyd
+# ============================================
+# Установка nginx
+# ============================================
+apt-get update && apt-get install -y nginx
 
-# Nginx
-apt-get install -y nginx
-
-# Базовая аутентификация
+# ============================================
+# Установка htpasswd для аутентификации
+# ============================================
 apt-get install -y apache2-htpasswd
 htpasswd -bc /etc/nginx/.htpasswd WEB P@ssw0rd
 
-# Настройка Nginx как reverse proxy
+# ============================================
+# Настройка nginx как reverse proxy
+# ============================================
 cat > /etc/nginx/sites-available.d/default.conf <<EOF
 server {
     listen 80;
@@ -42,6 +39,9 @@ server {
 }
 EOF
 
+ln -sf /etc/nginx/sites-available.d/default.conf /etc/nginx/sites-enabled.d/
+
 systemctl enable --now nginx
+systemctl restart nginx
 
 echo "=== ISP готов ==="
