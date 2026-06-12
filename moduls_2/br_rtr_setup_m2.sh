@@ -2,12 +2,11 @@
 echo "=== BR-RTR (Модуль 2) ==="
 
 # ============================================
-# 0. SSH настройка (порт 2026)
+# SSH настройка (порт 2026)
 # ============================================
-
 apt-get update && apt-get install -y openssh-server
 
-echo "net_admin:P@ssw0rd" | chpasswd
+echo "net_admin:P@ssw0rd" | chpasswd 2>/dev/null
 
 cat > /etc/openssh/sshd_config <<EOF
 Port 2026
@@ -20,16 +19,24 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# 1. Проброс портов на BR-SRV
+# Установка iptables (если нет)
 # ============================================
+apt-get install -y iptables
 
+# ============================================
+# Проброс портов
+# ============================================
 iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.0.2:2026
 iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.0.2:8080
 iptables-save > /etc/sysconfig/iptables
 systemctl restart iptables
 
-echo "=== Пробросы портов ==="
-iptables -t nat -L -n -v | grep -E "2026|8080"
+# ============================================
+# NTP-клиент
+# ============================================
+sed -i 's/^pool/#pool/' /etc/chrony.conf
+echo "server 172.16.2.1 iburst" >> /etc/chrony.conf
+systemctl restart chronyd
 
-echo "=== BR-RTR (Модуль 2) готов ==="
+echo "=== BR-RTR готов ==="
 echo "SSH: port 2026, user: net_admin, password: P@ssw0rd"
