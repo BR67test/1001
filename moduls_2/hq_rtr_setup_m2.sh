@@ -2,13 +2,11 @@
 echo "=== HQ-RTR (Модуль 2) ==="
 
 # ============================================
-# 0. SSH настройка (порт 2026)
+# SSH настройка (порт 2026)
 # ============================================
-
 apt-get update && apt-get install -y openssh-server
 
-# Пользователь net_admin (из модуля 1)
-echo "net_admin:P@ssw0rd" | chpasswd
+echo "net_admin:P@ssw0rd" | chpasswd 2>/dev/null
 
 cat > /etc/openssh/sshd_config <<EOF
 Port 2026
@@ -21,22 +19,22 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# 1. Смена DNS-сервера в DHCP
+# Смена DNS-сервера в DHCP (ISC DHCP)
 # ============================================
-
 if [ -f /etc/dhcp/dhcpd.conf ]; then
-    sed -i 's/option domain-name-servers 192.168.1.10;/option domain-name-servers 192.168.3.10,192.168.1.10;/g' /etc/dhcp/dhcpd.conf
+    sed -i 's/option domain-name-servers 192.168.100.2;/option domain-name-servers 192.168.0.2;/g' /etc/dhcp/dhcpd.conf
     systemctl restart dhcpd
     echo "ISC DHCP обновлён"
-elif [ -f /etc/dnsmasq.conf ]; then
-    sed -i 's/dhcp-option=6,192.168.1.10/dhcp-option=6,192.168.3.10,192.168.1.10/' /etc/dnsmasq.conf
-    systemctl restart dnsmasq
-    echo "dnsmasq обновлён"
+else
+    echo "Файл /etc/dhcp/dhcpd.conf не найден"
 fi
 
-echo "=== Текущая конфигурация DHCP ==="
-cat /etc/dnsmasq.conf 2>/dev/null | grep dhcp-option
-cat /etc/dhcp/dhcpd.conf 2>/dev/null | grep domain-name-servers
+# ============================================
+# NTP-клиент
+# ============================================
+sed -i 's/^pool/#pool/' /etc/chrony.conf
+echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
+systemctl restart chronyd
 
-echo "=== HQ-RTR (Модуль 2) готов ==="
+echo "=== HQ-RTR готов ==="
 echo "SSH: port 2026, user: net_admin, password: P@ssw0rd"
