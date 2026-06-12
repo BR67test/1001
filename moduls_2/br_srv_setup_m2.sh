@@ -2,9 +2,8 @@
 echo "=== BR-SRV (Модуль 2) ==="
 
 # ============================================
-# 0. SSH настройка (порт 2026)
+# SSH настройка (порт 2026)
 # ============================================
-
 apt-get update && apt-get install -y openssh-server
 
 useradd sshuser -u 2026 2>/dev/null
@@ -22,23 +21,22 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# 1. Установка Samba DC
+# Установка Samba DC
 # ============================================
-
 apt-get install -y task-samba-dc
 
-# Очистка старых конфигов
 rm -f /etc/samba/smb.conf
 rm -rf /var/lib/samba/
 rm -rf /var/cache/samba/
 mkdir -p /var/lib/samba/sysvol
 
-# Provision домена
+# Provision домена (с DNS forwarder)
 samba-tool domain provision \
     --realm=AU-TEAM.IRPO \
     --domain=AU-TEAM \
     --server-role=dc \
     --dns-backend=SAMBA_INTERNAL \
+    --dns-forwarder=77.88.8.8 \
     --adminpass='P@ssw0rd' \
     --use-rfc2307
 
@@ -52,34 +50,12 @@ nameserver 127.0.0.1
 EOF
 
 systemctl restart network
-
-# Запуск Samba
 systemctl enable --now samba
 sleep 5
 
 # ============================================
-# 2. Проверка Samba
+# Создание группы и пользователей (пароли как в рабочих скринах)
 # ============================================
-
-echo "=== Проверка Samba ==="
-samba-tool domain info 127.0.0.1
-
-# Проверка Kerberos
-echo "P@ssw0rd" | kinit Administrator@AU-TEAM.IRPO
-klist
-
-# ============================================
-# 3. Отключение политики сложности паролей
-# ============================================
-
-samba-tool domain passwordsettings set --complexity=off
-samba-tool domain passwordsettings set --history-length=0
-samba-tool domain passwordsettings set --min-pwd-length=3
-
-# ============================================
-# 4. Создание группы и пользователей
-# ============================================
-
 samba-tool group add hq
 
 for i in {1..5}; do
@@ -88,37 +64,22 @@ for i in {1..5}; do
     samba-tool group addmembers "hq" "hquser$i"
 done
 
-echo "=== Созданные пользователи ==="
-samba-tool group listmembers hq
-
 # ============================================
-# 5. Установка Docker
+# Docker и Docker Compose
 # ============================================
-
 apt-get install -y docker-engine docker-compose-v2
 systemctl enable --now docker
 
-# ============================================
-# 6. Загрузка Docker образов с ISO
-# ============================================
-
-ISO_PATH=$(find / -name "*.iso" 2>/dev/null | head -1)
-if [ -n "$ISO_PATH" ]; then
-    mkdir -p /mnt/iso
-    mount -o loop "$ISO_PATH" /mnt/iso 2>/dev/null
+# Загрузка образов с ISO
+mount /dev/sr0 /mnt 2>/dev/null
+if [ -f /mnt/docker/site_latest.tar ]; then
+    docker load < /mnt/docker/site_latest.tar
+fi
+if [ -f /mnt/docker/mariadb_latest.tar ]; then
+    docker load < /mnt/docker/mariadb_latest.tar
 fi
 
-if [ -f /mnt/iso/docker/site_latest.tar ]; then
-    docker load < /mnt/iso/docker/site_latest.tar
-fi
-if [ -f /mnt/iso/docker/mariadb_latest.tar ]; then
-    docker load < /mnt/iso/docker/mariadb_latest.tar
-fi
-
-# ============================================
-# 7. Docker Compose
-# ============================================
-
+# Docker Compose
 cat > /root/compose.yaml <<EOF
 services:
   database:
@@ -150,22 +111,38 @@ services:
       - database
 EOF
 
-cd /root
-docker compose up -d
+cd /root && docker compose up -d
 
 # ============================================
-# 8. Проверка
+# Ansible
 # ============================================
+apt-get install -y ansible sshpass
 
-echo "=== Проверка Docker ==="
-docker ps
+mkdir -p /etc/ansible
 
-echo "=== Проверка приложения ==="
-curl -s http://localhost:8080 | head -5
+cat > /etc/ansible/ansible.cfg <<EOF
+[defaults]
+inventory = /etc/ansible/hosts
+host_key_checking = False
+EOF
 
-echo "=== BR-SRV (Модуль 2) готов ==="
+cat > /etc/ansible/hosts <<EOF
+HQ-SRV ansible_host=192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
+HQ-CLI ansible_host=192.168.200.2 ansible_user=user ansible_password=resu ansible_port=22
+HQ-RTR ansible_host=10.10.10.1 ansible_user=user ansible_password=resu ansible_port=22
+BR-RTR ansible_host=192.168.0.1 ansible_user=user ansible_password=resu ansible_port=22
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+EOF
+
+# ============================================
+# NTP-клиент
+# ============================================
+sed -i 's/^pool/#pool/' /etc/chrony.conf
+echo "server 172.16.2.1 iburst" >> /etc/chrony.conf
+systemctl restart chronyd
+
+echo "=== BR-SRV готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
-echo "Пароли пользователей AD:"
-for i in {1..5}; do
-    echo "  hquser$i : P@ssw0rd${i}!"
-done
+echo "Пользователи AD: hquser1 (P@ssw0rd1!), hquser2 (P@ssw0rd2!), ..."
