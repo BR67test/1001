@@ -21,7 +21,7 @@ systemctl enable --now sshd
 # ============================================
 # Смена DNS-сервера в DHCP (ISC DHCP)
 # ============================================
-if [ -f /etc/dhcp/dhcpd.conf ]; then
+if [ -f /etc/dhcpd.conf ]; then
     sed -i 's/option domain-name-servers 192.168.100.2;/option domain-name-servers 192.168.3.10,192.168.1.10;/g' /etc/dhcp/dhcpd.conf
     systemctl restart dhcpd
     echo "ISC DHCP обновлён"
