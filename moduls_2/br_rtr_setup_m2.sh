@@ -26,8 +26,8 @@ apt-get install -y iptables
 # ============================================
 # Проброс портов
 # ============================================
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.0.2:2026
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.0.2:8080
+iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.3.10:2026
+iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.3.10:8080
 iptables-save > /etc/sysconfig/iptables
 systemctl restart iptables
 
