@@ -33,7 +33,7 @@ echo "/dev/md0 /raid ext4 defaults 0 0" >> /etc/fstab
 mount -a
 
 # ============================================
-# NFS-сервер (доступ только для сети HQ-CLI)
+# NFS-сервер
 # ============================================
 apt-get install -y nfs-server
 mkdir -p /raid/nfs
@@ -45,12 +45,9 @@ systemctl enable --now nfs-server
 # LAMP-сервер
 # ============================================
 apt-get install -y lamp-server
-
-# Запуск MariaDB
 systemctl enable --now mariadb
 sleep 5
 
-# Создание БД и пользователя
 mariadb -u root <<MYSQL
 CREATE DATABASE IF NOT EXISTS webdb;
 CREATE USER IF NOT EXISTS 'webc'@'localhost' IDENTIFIED BY 'Password';
@@ -58,7 +55,6 @@ GRANT ALL PRIVILEGES ON webdb.* TO 'webc'@'localhost' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 MYSQL
 
-# Импорт дампа (если есть)
 mount /dev/sr0 /mnt 2>/dev/null
 if [ -f /mnt/web/dump.sql ]; then
     mariadb -u webc -pPassword -D webdb < /mnt/web/dump.sql
@@ -66,14 +62,12 @@ if [ -f /mnt/web/dump.sql ]; then
     cp /mnt/web/logo.png /var/www/html/
 fi
 
-# Настройка index.php
 if [ -f /var/www/html/index.php ]; then
     sed -i 's/$username = "user"/$username = "webc"/' /var/www/html/index.php
     sed -i 's/$password = "password"/$password = "Password"/' /var/www/html/index.php
     sed -i 's/$dbname = "db"/$dbname = "webdb"/' /var/www/html/index.php
 fi
 
-# Запуск Apache
 systemctl enable --now httpd2
 
 # ============================================
