@@ -2,9 +2,8 @@
 echo "=== HQ-CLI (Модуль 2) ==="
 
 # ============================================
-# 0. SSH настройка (порт 2026)
+# SSH настройка (порт 2026)
 # ============================================
-
 apt-get update && apt-get install -y openssh-server
 
 useradd sshuser 2>/dev/null
@@ -22,21 +21,20 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# 1. Обновление DNS (ждём DHCP)
+# /etc/hosts для доступа к сайтам
 # ============================================
+echo "172.16.1.1 web.au-team.irpo" >> /etc/hosts
+echo "172.16.2.1 docker.au-team.irpo" >> /etc/hosts
 
-echo "Ожидание обновления DNS от DHCP..."
-sleep 5
+# ============================================
+# Обновление DNS от DHCP
+# ============================================
 systemctl restart network
-
-echo "=== Проверка DNS ==="
-cat /etc/resolv.conf
-ping -c2 au-team.irpo
+sleep 3
 
 # ============================================
-# 2. Установка SSSD
+# Установка SSSD
 # ============================================
-
 apt-get install -y task-auth-ad-sssd
 
 echo ""
@@ -49,10 +47,8 @@ echo ""
 read -p "Нажмите Enter после перезагрузки и входа в домен..."
 
 # ============================================
-# 3. Настройка sudo для группы hq
+# Настройка sudo для группы hq
 # ============================================
-
-echo "=== Настройка sudo ==="
 roledad hq wheel
 
 cat > /etc/sudoers.d/hq <<EOF
@@ -63,24 +59,26 @@ EOF
 chmod 440 /etc/sudoers.d/hq
 
 # ============================================
-# 4. NFS-клиент
+# NFS-клиент
 # ============================================
-
 apt-get install -y nfs-client
 mkdir -p /mnt/nfs
+chmod 777 /mnt/nfs
 
-echo "192.168.1.10:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
+echo "192.168.100.2:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
 mount -a
 
-echo "=== Проверка NFS ==="
-df -h | grep nfs
+# ============================================
+# Яндекс Браузер
+# ============================================
+apt-get install -y yandex-browser-stable
 
 # ============================================
-# 5. Проверка
+# NTP-клиент
 # ============================================
+sed -i 's/^pool/#pool/' /etc/chrony.conf
+echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
+systemctl restart chronyd
 
-echo "=== Проверка доменного пользователя ==="
-su - hquser1 -c "sudo id && sudo cat /etc/hosts && sudo grep 127 /etc/hosts"
-
-echo "=== HQ-CLI (Модуль 2) готов ==="
+echo "=== HQ-CLI готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
