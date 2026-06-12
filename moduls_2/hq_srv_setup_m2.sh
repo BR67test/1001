@@ -38,7 +38,7 @@ mount -a
 apt-get install -y nfs-server
 mkdir -p /raid/nfs
 chmod 777 /raid/nfs
-echo "/raid/nfs 192.168.200.0/24(rw,no_root_squash)" > /etc/exports
+echo "/raid/nfs 192.168.2.0/28(rw,no_root_squash)" > /etc/exports
 systemctl enable --now nfs-server
 
 # ============================================
