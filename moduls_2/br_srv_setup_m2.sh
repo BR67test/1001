@@ -30,13 +30,17 @@ rm -rf /var/lib/samba/
 rm -rf /var/cache/samba/
 mkdir -p /var/lib/samba/sysvol
 
-# Provision домена (с DNS forwarder)
-samba-tool domain provision --realm=AU-TEAM.IRPO --domain=AU-TEAM --server-role=dc --dns-backend=SAMBA_INTERNAL --adminpass='P@ssw0rd' --use-rfc2307
+samba-tool domain provision \
+    --realm=AU-TEAM.IRPO \
+    --domain=AU-TEAM \
+    --server-role=dc \
+    --dns-backend=SAMBA_INTERNAL \
+#    --dns-forwarder=77.88.8.8 \
+    --adminpass='P@ssw0rd' \
+    --use-rfc2307
 
-# Копирование Kerberos конфига
 cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 
-# Настройка DNS
 cat > /etc/net/ifaces/enp7s1/resolv.conf <<EOF
 search au-team.irpo
 nameserver 127.0.0.1
@@ -47,7 +51,7 @@ systemctl enable --now samba
 sleep 5
 
 # ============================================
-# Создание группы и пользователей (пароли как в рабочих скринах)
+# Создание группы и пользователей
 # ============================================
 samba-tool group add hq
 
@@ -65,14 +69,9 @@ systemctl enable --now docker
 
 # Загрузка образов с ISO
 mount /dev/sr0 /mnt 2>/dev/null
-if [ -f /mnt/docker/site_latest.tar ]; then
-    docker load < /mnt/docker/site_latest.tar
-fi
-if [ -f /mnt/docker/mariadb_latest.tar ]; then
-    docker load < /mnt/docker/mariadb_latest.tar
-fi
+[ -f /mnt/docker/site_latest.tar ] && docker load < /mnt/docker/site_latest.tar
+[ -f /mnt/docker/mariadb_latest.tar ] && docker load < /mnt/docker/mariadb_latest.tar
 
-# Docker Compose
 cat > /root/compose.yaml <<EOF
 services:
   database:
@@ -92,7 +91,7 @@ services:
     image: site:latest
     restart: always
     ports:
-      - "8080:8080"
+      - "8080:8000"
     environment:
       DB_TYPE: "maria"
       DB_HOST: "192.168.3.10"
@@ -122,8 +121,8 @@ EOF
 cat > /etc/ansible/hosts <<EOF
 HQ-SRV ansible_host=192.168.1.10 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
 HQ-CLI ansible_host=192.168.2.10 ansible_user=user ansible_password=resu ansible_port=22
-HQ-RTR ansible_host=172.16.1.10 ansible_user=user ansible_password=resu ansible_port=22
-BR-RTR ansible_host=172.16.2.10 ansible_user=user ansible_password=resu ansible_port=22
+BR-RTR ansible_host=192.168.3.1 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=22
+HQ-RTR ansible_host=192.168.1.1 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=22
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
