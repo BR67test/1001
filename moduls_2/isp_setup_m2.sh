@@ -20,7 +20,7 @@ server {
     listen 80;
     server_name web.au-team.irpo;
     location / {
-        proxy_pass http://172.16.1.2:8080;
+        proxy_pass http://172.16.1.10:8080;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         auth_basic "Restricted area";
@@ -32,7 +32,7 @@ server {
     listen 80;
     server_name docker.au-team.irpo;
     location / {
-        proxy_pass http://172.16.2.2:8080;
+        proxy_pass http://172.16.2.10:8080;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }
