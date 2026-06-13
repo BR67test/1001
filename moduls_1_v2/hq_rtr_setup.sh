@@ -73,8 +73,24 @@ ip link set gre1 up
 ip addr add 10.10.10.1/30 dev gre1
 
 # Форвардинг
+# Временное включение
 echo 1 > /proc/sys/net/ipv4/ip_forward
-sed -i 's/net.ipv4.ip_forward = 0/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf
+
+# Перманентное включение
+SYSCTL_CONF="/etc/net/sysctl.conf"
+
+if [ -f "$SYSCTL_CONF" ]; then
+    # Удаляем старые строки, если есть
+    sed -i '/net.ipv4.ip_forward/d' "$SYSCTL_CONF"
+    # Добавляем новую строку
+    echo "net.ipv4.ip_forward = 1" >> "$SYSCTL_CONF"
+else
+    # Если файла нет — создаём
+    echo "net.ipv4.ip_forward = 1" > "$SYSCTL_CONF"
+fi
+
+# Применяем настройки
+sysctl -p "$SYSCTL_CONF" 2>/dev/null || sysctl -p /etc/sysctl.conf 2>/dev/null
 
 # NAT
 apt-get update && apt-get install -y iptables
