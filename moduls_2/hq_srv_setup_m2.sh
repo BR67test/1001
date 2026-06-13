@@ -87,5 +87,24 @@ systemctl restart chronyd
 systemctl enable --now chronyd
 timedatectl set-timezone Asia/Yekaterinburg
 
+# ============================================
+# Удаление стандартного index.html и настройка DirectoryIndex
+# ============================================
+
+# Удаляем стандартную заглушку Apache
+rm -f /var/www/html/index.html
+
+# Настраиваем DirectoryIndex (index.php имеет приоритет)
+mkdir -p /etc/httpd2/conf/extra
+cat > /etc/httpd2/conf/extra/dir.conf <<'EOF'
+DirectoryIndex index.php index.html
+EOF
+
+# Подключаем конфиг, если ещё не подключён
+grep -q "Include conf/extra/dir.conf" /etc/httpd2/conf/httpd2.conf || echo "Include conf/extra/dir.conf" >> /etc/httpd2/conf/httpd2.conf
+
+# Перезапускаем Apache
+systemctl restart httpd2
+
 echo "=== HQ-SRV готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
