@@ -37,45 +37,55 @@ mount -a
 # ============================================
 apt-get install -y nfs-server
 mkdir -p /raid/nfs
-chmod 777 /raid/nfs
-echo "/raid/nfs 192.168.2.0/28(rw,no_root_squash)" > /etc/exports
+chmod 766 /raid/nfs
+echo "/raid/nfs 192.168.2.0/28(rw,no_subtree_check,no_root_squash)" > /etc/exports
+exportfs -arv
 systemctl enable --now nfs-server
 
 # ============================================
 # LAMP-сервер
 # ============================================
-apt-get install -y lamp-server
-systemctl enable --now mariadb
+apt-get install -y apache2 mariadb php8.2 apache2-mod_php8.2 php8.2-mysqli
+systemctl enable --now httpd2 mariadb
 sleep 5
 
-mariadb -u root <<MYSQL
-CREATE DATABASE IF NOT EXISTS webdb;
-CREATE USER IF NOT EXISTS 'webc'@'localhost' IDENTIFIED BY 'Password';
-GRANT ALL PRIVILEGES ON webdb.* TO 'webc'@'localhost' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-MYSQL
-
+# Копирование файлов с ISO
 mount /dev/sr0 /mnt 2>/dev/null
 if [ -f /mnt/web/dump.sql ]; then
-    mariadb -u webc -pPassword -D webdb < /mnt/web/dump.sql
     cp /mnt/web/index.php /var/www/html/
     cp /mnt/web/logo.png /var/www/html/
+    
+    # Импорт БД
+    mysql -u root -e "CREATE DATABASE webdb;"
+    mysql -u root webdb < /mnt/web/dump.sql
+    mysql -u root -e "CREATE USER 'web'@'localhost' IDENTIFIED BY 'P@ssw0rd';"
+    mysql -u root -e "GRANT ALL PRIVILEGES ON webdb.* TO 'web'@'localhost';"
+    mysql -u root -e "FLUSH PRIVILEGES;"
 fi
 
+# Настройка index.php
 if [ -f /var/www/html/index.php ]; then
-    sed -i 's/$username = "user"/$username = "webc"/' /var/www/html/index.php
-    sed -i 's/$password = "password"/$password = "Password"/' /var/www/html/index.php
+    sed -i 's/$username = "user"/$username = "web"/' /var/www/html/index.php
+    sed -i 's/$password = "password"/$password = "P@ssw0rd"/' /var/www/html/index.php
     sed -i 's/$dbname = "db"/$dbname = "webdb"/' /var/www/html/index.php
 fi
 
-systemctl enable --now httpd2
+# Права на файлы
+chown -R apache2:webmaster /var/www/html/
+chmod 755 /var/www/html/
+
+systemctl restart httpd2 mariadb
 
 # ============================================
 # NTP-клиент
 # ============================================
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
+apt-get install -y chrony
+cat > /etc/chrony.conf <<EOF
+pool 172.16.1.1 iburst prefer
+EOF
 systemctl restart chronyd
+systemctl enable --now chronyd
+timedatectl set-timezone Asia/Yekaterinburg
 
 echo "=== HQ-SRV готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
