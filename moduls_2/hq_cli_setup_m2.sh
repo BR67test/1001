@@ -12,7 +12,7 @@ usermod -aG wheel sshuser
 
 cat > /etc/openssh/sshd_config <<EOF
 Port 2026
-MaxAuthTries 3
+MaxAuthTries 2
 PermitRootLogin no
 AllowUsers sshuser
 Subsystem sftp /usr/libexec/openssh/sftp-server
@@ -21,57 +21,64 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# /etc/hosts для доступа к сайтам
+# Настройка DNS через nmcli
 # ============================================
-echo "172.16.1.10 web.au-team.irpo" >> /etc/hosts
-echo "172.16.2.10 docker.au-team.irpo" >> /etc/hosts
+apt-get install -y NetworkManager
+nmcli con modify DHCP-CLI ipv4.method auto ipv4.ignore-auto-dns yes ipv4.dns 192.168.3.10 2>/dev/null
+nmcli con down DHCP-CLI 2>/dev/null
+nmcli con up DHCP-CLI 2>/dev/null
 
 # ============================================
-# Установка SSSD и ADMC
+# /etc/hosts для доступа к сайтам
 # ============================================
-apt-get install -y task-auth-ad-sssd admc
+echo "172.16.1.1 web.au-team.irpo" >> /etc/hosts
+echo "172.16.2.1 docker.au-team.irpo" >> /etc/hosts
+
+# ============================================
+# Установка пакетов
+# ============================================
+apt-get install -y task-auth-ad-sssd admc gpui sudo gpupdate yandex-browser-stable nfs-utils
 
 echo ""
 echo "!!! РУЧНОЙ ШАГ !!!"
-echo "Введите HQ-CLI в домен через ЦУС:"
-echo "  Центр управления системой → Аутентификация"
-echo "  Домен: au-team.irpo"
-echo "  Применить → перезагрузить"
+echo "Введите HQ-CLI в домен через веб-интерфейс:"
+echo "  Откройте Firefox: http://192.168.3.10:8081"
+echo "  Configuration > Expert mode > Apply"
+echo "  Web Interface"
+echo "  Меняем порт 8080 на 8081 > Apply > Restart http server"
+echo "  Вкладка Domain"
+echo "  Выбираем Active Directory Domain Controller"
+echo "  DNS Forwarders - 192.168.1.10"
+echo "  Domain - au-team.irpo"
+echo "  Password - P@ssw0rd"
+echo "  Apply"
+echo "  Ждём статус OK"
+echo ""
+echo "Затем в терминале выполните:"
+echo "  nmcli con modify DHCP-CLI ipv4.method auto ipv4.ignore-auto-dns yes ipv4.dns 192.168.3.10"
+echo "  nmcli con down DHCP-CLI && nmcli con up DHCP-CLI"
+echo "  reboot"
 echo ""
 read -p "Нажмите Enter после перезагрузки и входа в домен..."
 
 # ============================================
-# Настройка sudo для группы hq
+# Настройка NFS-клиента
 # ============================================
-control group wheel add hq 2>/dev/null
-
-cat > /etc/sudoers.d/hq <<EOF
-Cmnd_Alias SHELLCMD = /bin/cat, /bin/grep, /usr/bin/id
-%wheel ALL=(ALL:ALL) SHELLCMD
-EOF
-
-chmod 440 /etc/sudoers.d/hq
-
-# ============================================
-# NFS-клиент
-# ============================================
-apt-get install -y nfs-clients
 mkdir -p /mnt/nfs
 chmod 777 /mnt/nfs
-echo "192.168.1.10:/raid/nfs /mnt/nfs nfs defaults,_netdev 0 0" >> /etc/fstab
+echo "192.168.1.10:/raid/nfs /mnt/nfs nfs defaults 0 0" >> /etc/fstab
 mount -a
-
-# ============================================
-# Яндекс Браузер
-# ============================================
-apt-get install -y yandex-browser-stable
 
 # ============================================
 # NTP-клиент
 # ============================================
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
+apt-get install -y chrony
+cat > /etc/chrony.conf <<EOF
+pool 172.16.1.1 iburst prefer
+EOF
 systemctl restart chronyd
+systemctl enable --now chronyd
+timedatectl set-timezone Asia/Yekaterinburg
 
 echo "=== HQ-CLI готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
