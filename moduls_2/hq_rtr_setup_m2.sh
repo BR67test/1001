@@ -2,15 +2,15 @@
 echo "=== HQ-RTR (Модуль 2) ==="
 
 # ============================================
-# Установка iptables и SSH
+# SSH настройка (порт 2026)
 # ============================================
-apt-get update && apt-get install -y iptables openssh-server
+apt-get update && apt-get install -y openssh-server
 
 echo "net_admin:P@ssw0rd" | chpasswd 2>/dev/null
 
 cat > /etc/openssh/sshd_config <<EOF
 Port 2026
-MaxAuthTries 3
+MaxAuthTries 2
 PermitRootLogin no
 AllowUsers net_admin
 Subsystem sftp /usr/libexec/openssh/sftp-server
@@ -19,29 +19,36 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# Настройка dnsmasq (DHCP)
+# Установка iptables
 # ============================================
-if [ -f /etc/dnsmasq.conf ]; then
-    # Устанавливаем DNS сервер BR-SRV
-    sed -i 's/dhcp-option=6,.*/dhcp-option=6,192.168.3.10,192.168.1.10/' /etc/dnsmasq.conf
-    systemctl restart dnsmasq
-    echo "dnsmasq обновлён (DNS = 192.168.3.10)"
-fi
+apt-get install -y iptables
 
 # ============================================
-# Удаление старого правила и добавление нового
+# Проброс портов (без привязки к интерфейсу)
 # ============================================
-iptables -t nat -D PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.100.2:80 2>/dev/null
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.10:80
-iptables -t nat -A PREROUTING -i enp7s1 -p tcp --dport 2026 -j DNAT --to-destination 192.168.1.10:2026
+# Проброс 8080 на HQ-SRV (порт 80)
+iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.10:80
+iptables -A FORWARD -p tcp -d 192.168.1.10 --dport 80 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+
+# Проброс 2026 на HQ-SRV
+iptables -t nat -A PREROUTING -p tcp --dport 2026 -j DNAT --to-destination 192.168.1.10:2026
+iptables -A FORWARD -p tcp -d 192.168.1.10 --dport 2026 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+
+# Сохранение правил
 iptables-save > /etc/sysconfig/iptables
+systemctl restart iptables
+systemctl enable --now iptables
 
 # ============================================
 # NTP-клиент
 # ============================================
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
+apt-get install -y chrony
+cat > /etc/chrony.conf <<EOF
+pool 172.16.1.1 iburst prefer
+EOF
 systemctl restart chronyd
+systemctl enable --now chronyd
+timedatectl set-timezone Asia/Yekaterinburg
 
 echo "=== HQ-RTR готов ==="
 echo "SSH: port 2026, user: net_admin, password: P@ssw0rd"
