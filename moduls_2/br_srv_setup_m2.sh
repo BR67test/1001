@@ -21,25 +21,35 @@ EOF
 systemctl enable --now sshd
 
 # ============================================
-# Установка Samba DC
+# Установка Samba DC и дополнительных пакетов
 # ============================================
-apt-get install -y task-samba-dc
+apt-get install -y task-samba-dc alterator-fbi alterator-net-domain admx-* admc gpui
 
 rm -f /etc/samba/smb.conf
 rm -rf /var/lib/samba/
 rm -rf /var/cache/samba/
 mkdir -p /var/lib/samba/sysvol
 
-samba-tool domain provision --realm=AU-TEAM.IRPO --domain=AU-TEAM --server-role=dc --dns-backend=SAMBA_INTERNAL --adminpass='P@ssw0rd' --use-rfc2307
+# Провизор домена
+samba-tool domain provision \
+    --realm=AU-TEAM.IRPO \
+    --domain=AU-TEAM \
+    --server-role=dc \
+    --dns-backend=SAMBA_INTERNAL \
+#    --dns-forwarder=77.88.8.8 \
+    --adminpass='P@ssw0rd' \
+    --use-rfc2307
 
 cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 
-cat > /etc/net/ifaces/enp7s1/resolv.conf <<EOF
-search au-team.irpo
-nameserver 127.0.0.1
+# Настройка DNS (два сервера: сначала сам, потом HQ-SRV)
+cat >> /etc/resolvconf.conf <<EOF
+name_servers=127.0.0.1
+name_servers=192.168.1.10
 EOF
-
+resolvconf -u
 systemctl restart network
+
 systemctl enable --now samba
 sleep 5
 
@@ -49,7 +59,7 @@ sleep 5
 samba-tool group add hq
 
 for i in {1..5}; do
-    samba-tool user add "hquser$i" "P@ssw0rd${i}!"
+    samba-tool user add "hquser$i" "P@ssw0rd"
     samba-tool user setexpiry "hquser$i" --noexpiry
     samba-tool group addmembers "hq" "hquser$i"
 done
@@ -97,6 +107,13 @@ services:
 EOF
 
 cd /root && docker compose up -d
+sleep 5
+
+# Фикс: создание БД и пользователя вручную
+docker exec -i db mariadb -u root -ptoor <<< "CREATE DATABASE IF NOT EXISTS testdb;"
+docker exec -i db mariadb -u root -ptoor <<< "CREATE USER IF NOT EXISTS 'testc'@'%' IDENTIFIED BY 'P@ssw0rd';"
+docker exec -i db mariadb -u root -ptoor <<< "GRANT ALL PRIVILEGES ON testdb.* TO 'testc'@'%';"
+docker exec -i db mariadb -u root -ptoor <<< "FLUSH PRIVILEGES;"
 
 # ============================================
 # Ansible
@@ -109,25 +126,30 @@ cat > /etc/ansible/ansible.cfg <<EOF
 [defaults]
 inventory = /etc/ansible/hosts
 host_key_checking = False
+interpreter_python = /usr/bin/python3
 EOF
 
 cat > /etc/ansible/hosts <<EOF
-HQ-SRV ansible_host=192.168.1.10 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
-HQ-CLI ansible_host=192.168.2.10 ansible_user=user ansible_password=resu ansible_port=22
-BR-RTR ansible_host=192.168.3.1 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=22
-HQ-RTR ansible_host=192.168.1.1 ansible_user=net_admin ansible_password=P@ssw0rd ansible_port=22
+[Alt]
+hq-rtr.au-team.irpo ansible_user=net_admin ansible_password=P@ssw0rd
+hq-srv.au-team.irpo ansible_user=sshuser ansible_password=P@ssw0rd
+hq-cli.au-team.irpo ansible_user=sshuser ansible_password=P@ssw0rd
+br-rtr.au-team.irpo ansible_user=net_admin ansible_password=P@ssw0rd
 
 [all:vars]
-ansible_python_interpreter=/usr/bin/python3
+ansible_port=2026
 EOF
 
 # ============================================
 # NTP-клиент
 # ============================================
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.2.1 iburst" >> /etc/chrony.conf
+apt-get install -y chrony
+cat > /etc/chrony.conf <<EOF
+pool 172.16.2.1 iburst prefer
+EOF
 systemctl restart chronyd
+systemctl enable --now chronyd
 
 echo "=== BR-SRV готов ==="
 echo "SSH: port 2026, user: sshuser, password: P@ssw0rd"
-echo "Пользователи AD: hquser1 (P@ssw0rd1!), hquser2 (P@ssw0rd2!), ..."
+echo "Пользователи AD: hquser1 (P@ssw0rd), hquser2 (P@ssw0rd), ..."
