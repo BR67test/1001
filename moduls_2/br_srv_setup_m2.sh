@@ -31,14 +31,7 @@ rm -rf /var/cache/samba/
 mkdir -p /var/lib/samba/sysvol
 
 # Провизор домена
-samba-tool domain provision \
-    --realm=AU-TEAM.IRPO \
-    --domain=AU-TEAM \
-    --server-role=dc \
-    --dns-backend=SAMBA_INTERNAL \
-#    --dns-forwarder=77.88.8.8 \
-    --adminpass='P@ssw0rd' \
-    --use-rfc2307
+samba-tool domain provision --realm=AU-TEAM.IRPO --domain=AU-TEAM --server-role=dc --dns-backend=SAMBA_INTERNAL --adminpass='P@ssw0rd' --use-rfc2307
 
 cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 
