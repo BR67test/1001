@@ -5,50 +5,41 @@ echo "=== HQ-CLI (Модуль 3) ==="
 # 2. Доверие сертификату CA
 # ============================================
 
-scp -P 2026 sshuser@192.168.100.2:/etc/ssl/CA/certs/ca.crt /usr/local/share/ca-certificates/
-update-ca-certificates
+if [ -f /mnt/nfs/ca.crt ]; then
+    cp /mnt/nfs/ca.crt /etc/pki/ca-trust/source/anchors/
+    update-ca-trust
+fi
 
 # ============================================
 # 5. CUPS клиент
 # ============================================
 
 apt-get update && apt-get install -y cups-client cups-common
-lpadmin -p PDF_Printer -E -v ipp://192.168.100.2/printers/PDF -m everywhere
-lpoptions -d PDF_Printer
 
-# ============================================
-# 8. Ansible (как цель для инвентаризации)
-# ============================================
+sleep 5
 
-useradd ansible 2>/dev/null
-echo "ansible:ansible" | chpasswd
-echo "AllowUsers ansible sshuser" >> /etc/openssh/sshd_config
-systemctl restart sshd
+lpadmin -p PDF_Printer -E -v ipp://192.168.100.2:631/printers/PDF -m everywhere 2>/dev/null
+lpoptions -d PDF_Printer 2>/dev/null
 
-# ============================================
-# 10. Кибер Бэкап (агент + узел хранилища)
-# ============================================
+echo "Принтер PDF_Printer настроен"
 
-# Монтирование диска с агентом
-mount /dev/cdrom /mnt 2>/dev/null || mount /dev/sr0 /mnt 2>/dev/null
-
-if [ -d /mnt/cyberbackup-agent ]; then
-    echo "Установка агента Кибер Бэкап..."
-    dpkg -i /mnt/cyberbackup-agent/*.deb 2>/dev/null
-    if [ -f /mnt/cyberbackup-agent/install.sh ]; then
-        /mnt/cyberbackup-agent/install.sh --mode unattended --server 192.168.100.2
-    fi
+# Добавление записи в /etc/hosts
+if ! grep -q "hq-srv.au-team.irpo" /etc/hosts; then
+    echo "192.168.100.2 hq-srv.au-team.irpo hq-srv" >> /etc/hosts
 fi
 
-# Создание директории хранилища
+# ============================================
+# 10. Кибер Бэкап (узел хранилища)
+# ============================================
+
 mkdir -p /backup
 chmod 755 /backup
 
-# Настройка SFTP для пользователя irpoadmin
 useradd irpoadmin -m 2>/dev/null
-echo "irpoadmin:P@ssw0rd" | chpasswd
+echo "irpoadmin:P@ssw0rd!" | chpasswd
 
-cat >> /etc/openssh/sshd_config <<EOF
+if ! grep -q "Match User irpoadmin" /etc/openssh/sshd_config; then
+    cat >> /etc/openssh/sshd_config <<'EOF'
 
 Match User irpoadmin
     ForceCommand internal-sftp
@@ -59,19 +50,11 @@ Match User irpoadmin
     AllowTcpForwarding no
     X11Forwarding no
 EOF
-
-systemctl restart sshd
+    systemctl restart sshd
+fi
 
 chown root:root /backup
 mkdir -p /backup/home/irpoadmin
 chown irpoadmin:irpoadmin /backup/home/irpoadmin
-
-# Подключение к серверу управления
-if command -v cbagent &>/dev/null; then
-    cbagent config set server 192.168.100.2
-    cbagent config set port 443
-    cbagent config set --insecure
-    cbagent connect --username irpoadmin --password P@ssw0rd
-fi
 
 echo "=== HQ-CLI (Модуль 3) готов ==="
