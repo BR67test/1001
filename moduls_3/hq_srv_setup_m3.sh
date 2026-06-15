@@ -2,53 +2,96 @@
 echo "=== HQ-SRV (Модуль 3) ==="
 
 # ============================================
-# 2. Центр сертификации (CA) + сертификаты
+# 2. Центр сертификации (CA)
 # ============================================
 
-apt-get update && apt-get install -y openssl
+apt-get update && apt-get install -y openssl ca-certificates
 
-mkdir -p /etc/ssl/CA/{certs,crl,newcerts,private}
-touch /etc/ssl/CA/index.txt
-echo 1000 > /etc/ssl/CA/serial
+mkdir -p /etc/pki/CA/{private,certs,newcerts,crl}
+touch /etc/pki/CA/index.txt
+echo 1000 > /etc/pki/CA/serial
+chmod 777 /etc/pki/CA/private
 
-# Корневой CA
-openssl genrsa -out /etc/ssl/CA/private/ca.key 4096
-openssl req -new -x509 -days 365 -key /etc/ssl/CA/private/ca.key \
-    -out /etc/ssl/CA/certs/ca.crt \
-    -subj "/C=RU/ST=Moscow/L=Moscow/O=AU-TEAM/CN=ca.au-team.irpo"
+openssl req -x509 -new -nodes \
+    -keyout /etc/pki/CA/private/ca.key \
+    -out /etc/pki/CA/certs/ca.crt \
+    -days 3650 \
+    -sha256 \
+    -subj "/CN=AU-TEAM Root CA"
 
-# Сертификат для web.au-team.irpo (HQ-SRV)
-openssl genrsa -out /etc/ssl/CA/private/web.key 4096
-openssl req -new -key /etc/ssl/CA/private/web.key \
-    -out /etc/ssl/CA/web.csr \
-    -subj "/C=RU/ST=Moscow/L=Moscow/O=AU-TEAM/CN=web.au-team.irpo"
-openssl ca -batch -days 30 -in /etc/ssl/CA/web.csr \
-    -out /etc/ssl/CA/certs/web.crt \
-    -keyfile /etc/ssl/CA/private/ca.key \
-    -cert /etc/ssl/CA/certs/ca.crt
+# Сертификат для web.au-team.irpo
+openssl genrsa -out /etc/pki/CA/private/web.au-team.irpo.key 2048
+openssl req -new \
+    -key /etc/pki/CA/private/web.au-team.irpo.key \
+    -out /etc/pki/CA/web.au-team.irpo.csr \
+    -subj "/CN=web.au-team.irpo"
 
-# Сертификат для docker.au-team.irpo (BR-SRV)
-openssl genrsa -out /etc/ssl/CA/private/docker.key 4096
-openssl req -new -key /etc/ssl/CA/private/docker.key \
-    -out /etc/ssl/CA/docker.csr \
-    -subj "/C=RU/ST=Moscow/L=Moscow/O=AU-TEAM/CN=docker.au-team.irpo"
-openssl ca -batch -days 30 -in /etc/ssl/CA/docker.csr \
-    -out /etc/ssl/CA/certs/docker.crt \
-    -keyfile /etc/ssl/CA/private/ca.key \
-    -cert /etc/ssl/CA/certs/ca.crt
+# Сертификат для docker.au-team.irpo
+openssl genrsa -out /etc/pki/CA/private/docker.au-team.irpo.key 2048
+openssl req -new \
+    -key /etc/pki/CA/private/docker.au-team.irpo.key \
+    -out /etc/pki/CA/docker.au-team.irpo.csr \
+    -subj "/CN=docker.au-team.irpo"
+
+cat > /etc/ssl/openssl-ca.cnf <<'EOF'
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+database = /etc/pki/CA/index.txt
+serial = /etc/pki/CA/serial
+new_certs_dir = /etc/pki/CA/newcerts
+default_md = sha256
+policy = policy_loose
+
+[ policy_loose ]
+countryName = optional
+stateOrProvinceName = optional
+organizationName = optional
+organizationalUnitName = optional
+commonName = supplied
+emailAddress = optional
+
+[ server_cert ]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:web.au-team.irpo
+EOF
+
+openssl ca -config /etc/ssl/openssl-ca.cnf \
+    -in /etc/pki/CA/web.au-team.irpo.csr \
+    -out /etc/pki/CA/certs/web.au-team.irpo.crt \
+    -extensions server_cert \
+    -days 30 \
+    -batch
+
+openssl ca -config /etc/ssl/openssl-ca.cnf \
+    -in /etc/pki/CA/docker.au-team.irpo.csr \
+    -out /etc/pki/CA/certs/docker.au-team.irpo.crt \
+    -extensions server_cert \
+    -days 30 \
+    -batch
 
 # Копирование сертификатов на BR-SRV
-scp -P 2026 /etc/ssl/CA/certs/docker.crt /etc/ssl/CA/private/docker.key \
-    sshuser@192.168.0.2:/etc/ssl/
+scp -P 2026 /etc/pki/CA/certs/docker.au-team.irpo.crt \
+    /etc/pki/CA/private/docker.au-team.irpo.key \
+    sshuser@192.168.0.2:/etc/pki/CA/ 2>/dev/null
+
+cp /etc/pki/CA/certs/ca.crt /raid/nfs/ 2>/dev/null
 
 # Настройка Apache для HTTPS
-cat >> /etc/httpd2/conf/extra/ssl.conf <<EOF
+apt-get install -y apache2-mod_ssl
+a2enmod ssl
+
+cat > /etc/httpd2/conf/extra/ssl.conf <<'EOF'
+Listen 443
 <VirtualHost _default_:443>
     DocumentRoot /var/www/html
     ServerName web.au-team.irpo
     SSLEngine on
-    SSLCertificateFile /etc/ssl/CA/certs/web.crt
-    SSLCertificateKeyFile /etc/ssl/CA/private/web.key
+    SSLCertificateFile /etc/pki/CA/certs/web.au-team.irpo.crt
+    SSLCertificateKeyFile /etc/pki/CA/private/web.au-team.irpo.key
 </VirtualHost>
 EOF
 
@@ -59,10 +102,14 @@ systemctl restart httpd2
 # ============================================
 
 apt-get install -y cups cups-pdf
+
 systemctl enable --now cups
-lpadmin -p PDF_Printer -E -v ipp://localhost/printers/PDF -m everywhere
-cupsenable PDF_Printer
-cupsaccept PDF_Printer
+cupsctl --share-printers --remote-any
+
+lpadmin -p PDF_Printer -E -v ipp://localhost/printers/PDF -m everywhere 2>/dev/null
+cupsenable PDF_Printer 2>/dev/null
+cupsaccept PDF_Printer 2>/dev/null
+systemctl restart cups
 
 # ============================================
 # 6. Rsyslog сервер
@@ -70,121 +117,114 @@ cupsaccept PDF_Printer
 
 apt-get install -y rsyslog
 
-cat >> /etc/rsyslog.conf <<EOF
-
+cat > /etc/rsyslog.d/00_common.conf <<'EOF'
+module(load="imuxsock")
+module(load="imklog")
 module(load="imtcp")
-input(type="imtcp" port="514")
 
-\$template RemoteLogs,"/opt/%HOSTNAME%/%PROGRAMNAME%.log"
+$template RemoteLogs, "/opt/%HOSTNAME%/rsyslog.txt"
 *.* ?RemoteLogs
+& stop
 EOF
 
-systemctl restart rsyslog
+systemctl enable --now rsyslog
 
-# Настройка ротации логов
-cat > /etc/logrotate.d/opt-logs <<EOF
-/opt/*/*.log {
+cat > /etc/logrotate.d/opt-logs <<'EOF'
+/opt/*/rsyslog.txt {
     weekly
+    minsize 10M
     rotate 4
     compress
-    size 10M
     missingok
     notifempty
-    create 644 root root
+    create 0644 root root
 }
 EOF
 
 # ============================================
-# 7. Мониторинг Prometheus + Grafana
+# 7. Zabbix сервер
 # ============================================
 
-# Node Exporter
-useradd --no-create-home --shell /bin/false node_exporter
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
-tar -xvf node_exporter-1.6.1.linux-amd64.tar.gz
-cp node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/
-chown node_exporter:node_exporter /usr/local/bin/node_exporter
+apt-get install -y postgresql17-server zabbix-server-pgsql fping
 
-cat > /etc/systemd/system/node_exporter.service <<EOF
-[Unit]
-Description=Node Exporter
-After=network.target
+/etc/init.d/postgresql initdb
+systemctl enable --now postgresql
 
-[Service]
-User=node_exporter
-Group=node_exporter
-Type=simple
-ExecStart=/usr/local/bin/node_exporter
-
-[Install]
-WantedBy=multi-user.target
+su - postgres -c "createuser --no-superuser --no-createdb --no-createrole --encrypted --pwprompt zabbix" <<'EOF'
+P@ssw0rd!
+P@ssw0rd!
 EOF
 
-systemctl enable --now node_exporter
+su - postgres -c "createdb -O zabbix zabbix"
 
-# Prometheus
-curl -LO https://github.com/prometheus/prometheus/releases/download/v2.50.1/prometheus-2.50.1.linux-amd64.tar.gz
-tar -xvf prometheus-2.50.1.linux-amd64.tar.gz
-cp prometheus-2.50.1.linux-amd64/prometheus /usr/local/bin/
-cp prometheus-2.50.1.linux-amd64/promtool /usr/local/bin/
-mkdir -p /etc/prometheus /var/lib/prometheus
-cp -r prometheus-2.50.1.linux-amd64/consoles /etc/prometheus
-cp -r prometheus-2.50.1.linux-amd64/console_libraries /etc/prometheus
+for SCHEMA in /usr/share/doc/zabbix-common-database-pgsql-*/schema.sql; do
+    [ -f "$SCHEMA" ] && su - postgres -c "psql -U zabbix -f $SCHEMA zabbix"
+done
+for IMAGES in /usr/share/doc/zabbix-common-database-pgsql-*/images.sql; do
+    [ -f "$IMAGES" ] && su - postgres -c "psql -U zabbix -f $IMAGES zabbix"
+done
+for DATA in /usr/share/doc/zabbix-common-database-pgsql-*/data.sql; do
+    [ -f "$DATA" ] && su - postgres -c "psql -U zabbix -f $DATA zabbix"
+done
 
-cat > /etc/prometheus/prometheus.yml <<EOF
-global:
-  scrape_interval: 15s
+apt-get install -y apache2 apache2-mod_php8.2
+apt-get install -y php8.2 php8.2-mbstring php8.2-sockets php8.2-gd \
+    php8.2-xmlreader php8.2-pgsql php8.2-ldap php8.2-openssl
 
-scrape_configs:
-  - job_name: 'hq-srv'
-    static_configs:
-      - targets: ['localhost:9100']
-  - job_name: 'br-srv'
-    static_configs:
-      - targets: ['192.168.0.2:9100']
+systemctl enable --now httpd2
+
+cat >> /etc/php/8.2/apache2-mod_php/php.ini <<'EOF'
+memory_limit = 256M
+post_max_size = 32M
+max_execution_time = 600
+max_input_time = 600
+date.timezone = Asia/Yekaterinburg
+always_populate_raw_post_data = -1
 EOF
 
-cat > /etc/systemd/system/prometheus.service <<EOF
-[Unit]
-Description=Prometheus
-After=network.target
+systemctl restart httpd2
 
-[Service]
-User=root
-Type=simple
-ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/
-
-[Install]
-WantedBy=multi-user.target
+cat > /etc/zabbix/zabbix_server.conf <<'EOF'
+DBHost=localhost
+DBName=zabbix
+DBUser=zabbix
+DBPassword=P@ssw0rd!
 EOF
 
-systemctl enable --now prometheus
+systemctl enable --now zabbix-server
 
-# Grafana
-apt-get install -y grafana
-systemctl enable --now grafana-server
+apt-get install -y zabbix-phpfrontend-apache2 zabbix-phpfrontend-php8.2
 
-# Настройка источника данных Grafana
-sleep 10
-curl -X POST -H "Content-Type: application/json" \
-    -d '{"name":"Prometheus","type":"prometheus","url":"http://localhost:9090","access":"proxy"}' \
-    http://admin:admin@localhost:3000/api/datasources 2>/dev/null
+if [ -f /etc/httpd2/conf/addon.d/A.zabbix.conf ]; then
+    ln -sf /etc/httpd2/conf/addon.d/A.zabbix.conf /etc/httpd2/conf/extra-enabled/ 2>/dev/null
+fi
+
+# Zabbix Agent на HQ-SRV
+apt-get install -y zabbix-agent
+cat > /etc/zabbix/zabbix_agentd.conf <<'EOF'
+Server=127.0.0.1
+ServerActive=127.0.0.1
+Hostname=zabbix_server
+EOF
+
+systemctl enable --now zabbix-agent
 
 # ============================================
 # 9. Fail2ban для SSH
 # ============================================
 
-apt-get install -y fail2ban
+apt-get install -y fail2ban python3-module-systemd
 
-cat > /etc/fail2ban/jail.local <<EOF
+cat > /etc/fail2ban/jail.d/ssh.conf <<'EOF'
 [DEFAULT]
 bantime = 60
-findtime = 60
+findtime = 600
 maxretry = 3
 
 [sshd]
 enabled = true
 port = 2026
+filter = sshd
 logpath = /var/log/auth.log
 EOF
 
@@ -194,25 +234,18 @@ systemctl enable --now fail2ban
 # 10. Кибер Бэкап (сервер управления)
 # ============================================
 
-# Монтирование диска с Кибер Бэкап
-mount /dev/cdrom /mnt 2>/dev/null || mount /dev/sr0 /mnt 2>/dev/null
-
-if [ -d /mnt/cyberbackup ]; then
-    echo "Установка Кибер Бэкап сервера..."
-    dpkg -i /mnt/cyberbackup/*.deb 2>/dev/null
-    if [ -f /mnt/cyberbackup/install.sh ]; then
-        /mnt/cyberbackup/install.sh --mode unattended --admin-password P@ssw0rd
-    fi
-else
-    echo "Диск с Кибер Бэкап не найден"
-fi
-
-# Создание пользователя irpoadmin
 useradd irpoadmin 2>/dev/null
-echo "irpoadmin:P@ssw0rd" | chpasswd
+echo "irpoadmin:P@ssw0rd!" | chpasswd
 usermod -aG wheel irpoadmin
 
-# Скрипты бэкапа
+mount /dev/sr1 /mnt 2>/dev/null
+
+if [ -f /mnt/cyberbackup/install.sh ]; then
+    /mnt/cyberbackup/install.sh --mode unattended --admin-password "P@ssw0rd!" 2>/dev/null
+fi
+
+apt-get install -y mariadb-client
+
 mkdir -p /opt/backup_scripts
 
 cat > /opt/backup_scripts/backup_etc.sh <<'EOF'
@@ -222,7 +255,7 @@ EOF
 
 cat > /opt/backup_scripts/backup_db.sh <<'EOF'
 #!/bin/bash
-mysqldump -u webc -pPassword webdb > /tmp/webdb_dump.sql
+mysqldump -u web -pP@ssw0rd! webdb > /tmp/webdb_dump.sql 2>/dev/null
 /opt/cyberbackup/bin/cbcmd backup start --plan "Backup_webdb" 2>/dev/null
 rm -f /tmp/webdb_dump.sql
 EOF
@@ -231,13 +264,5 @@ chmod +x /opt/backup_scripts/*.sh
 
 (crontab -l 2>/dev/null; echo "0 2 * * 0 /opt/backup_scripts/backup_etc.sh") | crontab -
 (crontab -l 2>/dev/null; echo "0 3 * * 0 /opt/backup_scripts/backup_db.sh") | crontab -
-
-# ============================================
-# NTP-клиент
-# ============================================
-
-sed -i 's/^pool/#pool/' /etc/chrony.conf
-echo "server 172.16.1.1 iburst" >> /etc/chrony.conf
-systemctl restart chronyd
 
 echo "=== HQ-SRV (Модуль 3) готов ==="
