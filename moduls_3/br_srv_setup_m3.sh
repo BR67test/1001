@@ -173,7 +173,7 @@ cat > /etc/ansible/inventory.yml <<'EOF'
           timestamp: "{{ ansible_date_time.iso8601 }}"
         dest: "/etc/ansible/PC_INFO/{{ host_info.name }}.yml"
       delegate_to: localhost
-      run_once: true
+     # run_once: true
 EOF
 
 cat > /etc/ansible/hosts <<'EOF'
