@@ -178,7 +178,7 @@ EOF
 
 cat > /etc/ansible/hosts <<'EOF'
 [hq-srv]
-192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd! ansible_port=2026
+192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
 
 [hq-cli]
 192.168.200.4 ansible_user=sshuser ansible_password=P@ssw0rd! ansible_port=2026
