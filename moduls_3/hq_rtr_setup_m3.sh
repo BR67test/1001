@@ -2,79 +2,122 @@
 echo "=== HQ-RTR (Модуль 3) ==="
 
 # ============================================
-# 3. IPsec туннель (strongSwan)
+# 3. IPsec туннель
 # ============================================
 
-apt-get update && apt-get install -y strongswan strongswan-pki libcharon-extra-plugins
+apt-get update && apt-get install -y strongswan mc
 
-# Генерация ключей и сертификатов
-pki --gen --type rsa --size 4096 --outform pem > /etc/strongswan/ipsec.d/private/hq-rtr-key.pem
-pki --self --ca --lifetime 3650 --in /etc/strongswan/ipsec.d/private/hq-rtr-key.pem \
-    --dn "CN=HQ-RTR" --outform pem > /etc/strongswan/ipsec.d/cacerts/hq-rtr-cert.pem
-
-cat > /etc/strongswan/ipsec.conf <<EOF
+cat > /etc/strongswan/ipsec.conf <<'EOF'
 config setup
-    charondebug="all"
-    uniqueids=yes
+    uniqueids = yes
+    charondebug="ike 2, knl 2, cfg 2, mgr 2, chd 2"
 
-conn hq-to-br
-    auto=start
-    type=tunnel
-    keyexchange=ikev2
-    authby=pubkey
+conn br-rtr.au-team.irpo
+    type=transport
     left=172.16.1.2
-    leftsubnet=10.10.10.0/30,192.168.100.0/24,192.168.200.0/24,192.168.99.0/29
-    leftid=@hq-rtr
-    leftcert=hq-rtr-cert.pem
-    leftfirewall=yes
+    leftid=172.16.1.2
     right=172.16.2.2
-    rightsubnet=10.10.10.0/30,192.168.0.0/24
-    rightid=@br-rtr
-    ike=aes256-sha256-modp2048
-    esp=aes256-sha256
-    keyingtries=%forever
+    rightid=172.16.2.2
+    authby=secret
+    ike=aes256-sha256-modp2048!
+    esp=aes256-sha256!
+    keyexchange=ikev2
     ikelifetime=24h
     lifetime=8h
-    dpddelay=30s
-    dpdtimeout=120s
+    dpddelay=30
+    dpdtimeout=120
     dpdaction=restart
+    auto=start
 EOF
 
-cat > /etc/strongswan/ipsec.secrets <<EOF
-: RSA hq-rtr-key.pem "P@ssw0rd"
+cat > /etc/strongswan/ipsec.secrets <<'EOF'
+172.16.1.2 172.16.2.2 : PSK "P@ssw0rd!"
 EOF
 
-systemctl enable --now strongswan
+systemctl enable --now strongswan-starter
+systemctl start ipsec
 
 # ============================================
-# 4. Межсетевой экран (файрвол)
+# 4. Межсетевой экран (nftables)
 # ============================================
 
-iptables -P INPUT DROP
-iptables -P FORWARD DROP
-iptables -F
-iptables -X
+apt-get install -y nftables
 
-iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
-iptables -A INPUT -i lo -j ACCEPT
-iptables -A INPUT -p icmp -j ACCEPT
-iptables -A FORWARD -p icmp -j ACCEPT
-iptables -A INPUT -p udp --dport 123 -j ACCEPT
+cat > /etc/nftables.conf <<'EOF'
+#!/usr/sbin/nft -f
 
-iptables -A FORWARD -p tcp --dport 80 -j ACCEPT
-iptables -A FORWARD -p tcp --dport 443 -j ACCEPT
-iptables -A FORWARD -p tcp --dport 8080 -j ACCEPT
-iptables -A FORWARD -p tcp --dport 2026 -j ACCEPT
+flush ruleset
 
-iptables -A INPUT -p udp --dport 500 -j ACCEPT
-iptables -A INPUT -p udp --dport 4500 -j ACCEPT
-iptables -A INPUT -p esp -j ACCEPT
-iptables -A FORWARD -p udp --dport 500 -j ACCEPT
-iptables -A FORWARD -p udp --dport 4500 -j ACCEPT
-iptables -A FORWARD -p esp -j ACCEPT
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+        iif lo accept
+        ct state established,related accept
+        ip protocol icmp accept
+        ip protocol udp dport 123 accept
+        ip protocol udp dport 500 accept
+        ip protocol udp dport 4500 accept
+        ip protocol esp accept
+        tcp dport 2026 accept
+    }
 
-iptables-save > /etc/sysconfig/iptables
-systemctl restart iptables
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+        ct state established,related accept
+        tcp dport 80 accept
+        tcp dport 443 accept
+        tcp dport 8080 accept
+        tcp dport 2026 accept
+        ip protocol esp accept
+        ip protocol udp dport 500 accept
+        ip protocol udp dport 4500 accept
+    }
+
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}
+EOF
+
+systemctl enable --now nftables
+
+# ============================================
+# 6. Rsyslog клиент
+# ============================================
+
+apt-get install -y rsyslog
+
+cat > /etc/rsyslog.d/00_common.conf <<'EOF'
+module(load="imuxsock")
+module(load="imklog")
+module(load="imtcp")
+
+*.* @@192.168.100.2:514
+*.warning @@192.168.100.2:514
+EOF
+
+systemctl enable --now rsyslog
+
+# ============================================
+# 7. Zabbix агент
+# ============================================
+
+apt-get install -y zabbix-agent
+
+cat > /etc/zabbix/zabbix_agentd.conf <<'EOF'
+Server=192.168.100.2
+ServerActive=192.168.100.2
+EOF
+
+systemctl enable --now zabbix-agent
+
+# ============================================
+# DNS для мониторинга
+# ============================================
+
+if [ -f /etc/dnsmasq.conf ]; then
+    echo "address=/mon.au-team.irpo/192.168.100.2" >> /etc/dnsmasq.conf
+    systemctl restart dnsmasq
+fi
 
 echo "=== HQ-RTR (Модуль 3) готов ==="
