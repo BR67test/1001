@@ -35,20 +35,23 @@ if [ -n "$CSV_FILE" ]; then
         country=$(echo "$country" | tr -d '\r')
         password=$(echo "$password" | tr -d '\r')
         
-        # Формируем имя пользователя из firstName + lastName
-        username=$(echo "${firstName}${lastName}" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+        # Формируем имя пользователя (только буквы, цифры, точки и дефисы)
+        username=$(echo "${firstName}${lastName}" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9.-]//g')
         
-        if [ -n "$username" ] && [ "$firstName" != "First Name" ]; then
-            echo "Создание пользователя: $username ($firstName $lastName)"
-            
-            samba-tool user create "$username" "$password" \
-                --given-name="$firstName" \
-                --surname="$lastName" \
-                --department="$ou" \
-                --must-change-at-next-login=no 2>/dev/null || echo "  -> Пользователь уже существует"
-            
-            samba-tool group addmembers "Domain Users" "$username" 2>/dev/null
+        # Пропускаем пустые или недопустимые имена
+        if [ -z "$username" ] || [ "$firstName" = "First Name" ]; then
+            continue
         fi
+        
+        echo "Создание пользователя: $username ($firstName $lastName)"
+        
+        samba-tool user create "$username" "$password" \
+            --given-name="$firstName" \
+            --surname="$lastName" \
+            --department="$ou" \
+            --must-change-at-next-login=no 2>/dev/null || echo "  -> Пользователь уже существует"
+        
+        samba-tool group addmembers "Domain Users" "$username" 2>/dev/null
     done
     echo "=== Импорт пользователей завершён ==="
 else
@@ -103,17 +106,40 @@ systemctl enable --now node_exporter
 rm -rf node_exporter-1.6.1.linux-amd64*
 
 # ============================================
-# 7. Zabbix агент (альтернативный мониторинг)
+# 7. Zabbix агент (с созданием service файла вручную)
 # ============================================
 
 apt-get install -y zabbix-agent
 
+# Создание пользователя zabbix если нет
+useradd zabbix 2>/dev/null
+
+# Создание service файла вручную
+cat > /lib/systemd/system/zabbix-agent.service <<'EOF'
+[Unit]
+Description=Zabbix Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/zabbix_agentd
+User=zabbix
+Group=zabbix
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Создание конфига
 cat > /etc/zabbix/zabbix_agentd.conf <<'EOF'
 Server=192.168.100.2
 ServerActive=192.168.100.2
 Hostname=br-srv.au-team.irpo
 EOF
 
+# Запуск службы
+systemctl daemon-reload
 systemctl enable --now zabbix-agent
 
 # ============================================
@@ -172,12 +198,23 @@ echo "=== Отчёты Ansible в /etc/ansible/PC_INFO/ ==="
 ls -la /etc/ansible/PC_INFO/ 2>/dev/null
 
 # ============================================
-# Копирование CA сертификата для HQ-CLI (через NFS)
+# 9. Настройка NTP клиента
 # ============================================
 
-# Ожидаем, что NFS шара смонтирована с HQ-SRV
-if [ -d /mnt/nfs ]; then
-    echo "NFS доступен"
+apt-get install -y chrony
+cat > /etc/chrony.conf <<'EOF'
+server 172.16.2.1 iburst
+EOF
+systemctl restart chronyd
+systemctl enable chronyd
+
+# ============================================
+# 10. Копирование CA сертификата
+# ============================================
+
+mkdir -p /etc/pki/CA/certs
+if [ -f /mnt/Users.csu ]; then
+    echo "ISO смонтирован, сертификаты будут скопированы позже"
 fi
 
 echo "=== BR-SRV (Модуль 3) готов ==="
