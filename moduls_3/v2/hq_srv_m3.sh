@@ -125,7 +125,7 @@ ServerActive=127.0.0.1
 Hostname=zabbix_server
 EOF
 
-systemctl enable --now zabbix-agent
+systemctl enable --now zabbix_agentd.service
 
 # Apache для Zabbix
 apt-get install -y apache2 apache2-mod_php8.2 php8.2 php8.2-pgsql php8.2-mbstring php8.2-gd
