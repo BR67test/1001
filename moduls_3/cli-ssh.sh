@@ -1,6 +1,38 @@
 #!/bin/bash
 echo "=== Настройка SSH на HQ-CLI ==="
 
+
+groupadd sshuser
+
+# 2. Создание пользователя в /etc/passwd
+echo "sshuser:x:1001:1001::/home/sshuser:/bin/bash" >> /etc/passwd
+
+# 3. Создание пароля
+passwd sshuser
+# Введи: P@ssw0rd1!
+# Подтверди: P@ssw0rd1!
+
+# 4. Создание домашней директории
+mkdir -p /home/sshuser
+cp -r /etc/skel/. /home/sshuser/
+chown -R sshuser:sshuser /home/sshuser
+
+# 5. Добавление в группу wheel для sudo
+echo "sshuser:x:10:sshuser" >> /etc/group
+
+# 6. Настройка sudo
+echo "sshuser ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/sshuser
+chmod 440 /etc/sudoers.d/sshuser
+
+# 7. Настройка SSH
+if ! grep -q "AllowUsers sshuser" /etc/openssh/sshd_config; then
+    echo "AllowUsers sshuser" >> /etc/openssh/sshd_config
+    systemctl restart sshd
+fi
+
+# 8. Проверка
+id sshuser
+su - sshuser -c "whoami"
 # ============================================
 # 1. Установка SSH сервера
 # ============================================
