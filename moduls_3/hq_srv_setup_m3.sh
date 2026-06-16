@@ -2,39 +2,18 @@
 echo "=== HQ-SRV (Модуль 3) ==="
 
 # ============================================
-# 2. Центр сертификации (CA)
+# 2. Центр сертификации (CA) — полностью переделано
 # ============================================
 
 apt-get update && apt-get install -y openssl ca-certificates
 
+# Создание структуры CA
 mkdir -p /etc/pki/CA/{private,certs,newcerts,crl}
 touch /etc/pki/CA/index.txt
 echo 1000 > /etc/pki/CA/serial
 chmod 777 /etc/pki/CA/private
 
-openssl req -x509 -new -nodes \
-    -keyout /etc/pki/CA/private/ca.key \
-    -out /etc/pki/CA/certs/ca.crt \
-    -days 3650 \
-    -sha256 \
-    -subj "/CN=AU-TEAM Root CA"
-
-# Сертификат для web.au-team.irpo
-openssl genrsa -out /etc/pki/CA/private/web.au-team.irpo.key 2048
-openssl req -new \
-    -key /etc/pki/CA/private/web.au-team.irpo.key \
-    -out /etc/pki/CA/web.au-team.irpo.csr \
-    -subj "/CN=web.au-team.irpo"
-
-# Сертификат для docker.au-team.irpo
-openssl genrsa -out /etc/pki/CA/private/docker.au-team.irpo.key 2048
-openssl req -new \
-    -key /etc/pki/CA/private/docker.au-team.irpo.key \
-    -out /etc/pki/CA/docker.au-team.irpo.csr \
-    -subj "/CN=docker.au-team.irpo"
-
-mkdir -p /etc/ssl
-
+# Создание конфига CA
 cat > /etc/ssl/openssl-ca.cnf <<'EOF'
 [ ca ]
 default_ca = CA_default
@@ -58,14 +37,35 @@ emailAddress = optional
 basicConstraints = CA:FALSE
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
-subjectAltName = DNS:web.au-team.irpo
 EOF
+
+# Корневой сертификат CA
+openssl req -x509 -new -nodes \
+    -keyout /etc/pki/CA/private/ca.key \
+    -out /etc/pki/CA/certs/ca.crt \
+    -days 3650 \
+    -sha256 \
+    -subj "/CN=AU-TEAM Root CA"
+
+# Сертификат для web.au-team.irpo
+openssl genrsa -out /etc/pki/CA/private/web.au-team.irpo.key 2048
+openssl req -new \
+    -key /etc/pki/CA/private/web.au-team.irpo.key \
+    -out /etc/pki/CA/web.au-team.irpo.csr \
+    -subj "/CN=web.au-team.irpo"
 
 openssl ca -batch -config /etc/ssl/openssl-ca.cnf \
     -in /etc/pki/CA/web.au-team.irpo.csr \
     -out /etc/pki/CA/certs/web.au-team.irpo.crt \
     -extensions server_cert \
     -days 30
+
+# Сертификат для docker.au-team.irpo
+openssl genrsa -out /etc/pki/CA/private/docker.au-team.irpo.key 2048
+openssl req -new \
+    -key /etc/pki/CA/private/docker.au-team.irpo.key \
+    -out /etc/pki/CA/docker.au-team.irpo.csr \
+    -subj "/CN=docker.au-team.irpo"
 
 openssl ca -batch -config /etc/ssl/openssl-ca.cnf \
     -in /etc/pki/CA/docker.au-team.irpo.csr \
@@ -125,122 +125,35 @@ cat > /etc/logrotate.d/opt-logs <<'EOF'
 EOF
 
 # ============================================
-# 7. Zabbix сервер и агент (исправлено)
+# 7. Zabbix сервер (Prometheus вместо Zabbix)
 # ============================================
 
-# Удаление старых пакетов
-apt-get remove -y zabbix-server-pgsql zabbix-agent 2>/dev/null
-apt-get clean
+# Node Exporter
+useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null
 
-# Установка заново
-apt-get install -y postgresql17-server zabbix-server-pgsql zabbix-agent fping
+curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
+tar -xvf node_exporter-1.6.1.linux-amd64.tar.gz
+cp node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/
+chown node_exporter:node_exporter /usr/local/bin/node_exporter
 
-# Инициализация PostgreSQL
-/etc/init.d/postgresql initdb
-systemctl enable --now postgresql
-sleep 5
-
-# Создание БД и пользователя
-su - postgres -c "psql -c \"CREATE USER zabbix WITH PASSWORD 'P@ssw0rd!';\""
-su - postgres -c "psql -c \"CREATE DATABASE zabbix OWNER zabbix;\""
-
-# Импорт схем
-for SCHEMA in /usr/share/doc/zabbix-common-database-pgsql-*/schema.sql; do
-    [ -f "$SCHEMA" ] && su - postgres -c "psql -U zabbix -f $SCHEMA zabbix"
-done
-for IMAGES in /usr/share/doc/zabbix-common-database-pgsql-*/images.sql; do
-    [ -f "$IMAGES" ] && su - postgres -c "psql -U zabbix -f $IMAGES zabbix"
-done
-for DATA in /usr/share/doc/zabbix-common-database-pgsql-*/data.sql; do
-    [ -f "$DATA" ] && su - postgres -c "psql -U zabbix -f $DATA zabbix"
-done
-
-# PHP и Apache
-apt-get install -y apache2 apache2-mod_php8.2
-apt-get install -y php8.2 php8.2-mbstring php8.2-sockets php8.2-gd \
-    php8.2-xmlreader php8.2-pgsql php8.2-ldap php8.2-openssl
-
-systemctl enable --now httpd2
-
-cat >> /etc/php/8.2/apache2-mod_php/php.ini <<'EOF'
-memory_limit = 256M
-post_max_size = 32M
-max_execution_time = 600
-max_input_time = 600
-date.timezone = Asia/Yekaterinburg
-always_populate_raw_post_data = -1
-EOF
-
-systemctl restart httpd2
-
-# Настройка Zabbix Server
-cat > /etc/zabbix/zabbix_server.conf <<'EOF'
-DBHost=localhost
-DBName=zabbix
-DBUser=zabbix
-DBPassword=P@ssw0rd!
-EOF
-
-# Создание пользователя zabbix
-useradd zabbix 2>/dev/null
-usermod -aG postgres zabbix 2>/dev/null
-
-# Создание service файлов (с проверкой путей)
-ZABBIX_SERVER=$(find /usr -name "zabbix_server" -type f 2>/dev/null | head -1)
-ZABBIX_AGENT=$(find /usr -name "zabbix_agentd" -type f 2>/dev/null | head -1)
-
-if [ -z "$ZABBIX_SERVER" ]; then
-    echo "Zabbix Server binary not found! Creating dummy service."
-    ZABBIX_SERVER="/usr/sbin/zabbix_server"
-fi
-
-if [ -z "$ZABBIX_AGENT" ]; then
-    echo "Zabbix Agent binary not found! Creating dummy service."
-    ZABBIX_AGENT="/usr/sbin/zabbix_agentd"
-fi
-
-cat > /lib/systemd/system/zabbix-server.service <<EOF
+cat > /etc/systemd/system/node_exporter.service <<'EOF'
 [Unit]
-Description=Zabbix Server
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-ExecStart=$ZABBIX_SERVER
-User=zabbix
-Group=zabbix
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat > /lib/systemd/system/zabbix-agent.service <<EOF
-[Unit]
-Description=Zabbix Agent
+Description=Node Exporter
 After=network.target
 
 [Service]
+User=node_exporter
+Group=node_exporter
 Type=simple
-ExecStart=$ZABBIX_AGENT
-User=zabbix
-Group=zabbix
-Restart=on-failure
+ExecStart=/usr/local/bin/node_exporter
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now zabbix-server 2>/dev/null
-systemctl enable --now zabbix-agent 2>/dev/null
-
-# Zabbix frontend
-apt-get install -y zabbix-phpfrontend-apache2 zabbix-phpfrontend-php8.2
-
-if [ -f /etc/httpd2/conf/addon.d/A.zabbix.conf ]; then
-    ln -sf /etc/httpd2/conf/addon.d/A.zabbix.conf /etc/httpd2/conf/extra-enabled/ 2>/dev/null
-fi
+systemctl enable --now node_exporter
+rm -rf node_exporter-1.6.1.linux-amd64*
 
 # ============================================
 # 9. Fail2ban для SSH
@@ -306,13 +219,12 @@ chmod +x /opt/backup_scripts/*.sh
 # ============================================
 
 apt-get install -y apache2-mod_ssl
-a2enmod ssl
 
 mkdir -p /etc/httpd2/conf/extra
 
 cat > /etc/httpd2/conf/extra/ssl.conf <<'EOF'
 Listen 443
-<VirtualHost _default_:443>
+<VirtualHost *:443>
     DocumentRoot /var/www/html
     ServerName web.au-team.irpo
     SSLEngine on
@@ -321,9 +233,10 @@ Listen 443
 </VirtualHost>
 EOF
 
-# Добавляем Include в основной конфиг
 grep -q "Include conf/extra/ssl.conf" /etc/httpd2/conf/httpd2.conf || echo "Include conf/extra/ssl.conf" >> /etc/httpd2/conf/httpd2.conf
 
+# Проверка конфига перед перезапуском
+httpd2 -t
 systemctl restart httpd2
 
 echo "=== HQ-SRV (Модуль 3) готов ==="
