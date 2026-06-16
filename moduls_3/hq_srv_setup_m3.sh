@@ -80,23 +80,6 @@ scp -P 2026 /etc/pki/CA/certs/docker.au-team.irpo.crt \
 
 cp /etc/pki/CA/certs/ca.crt /raid/nfs/ 2>/dev/null
 
-# Настройка Apache для HTTPS
-apt-get install -y apache2-mod_ssl
-a2enmod ssl
-
-cat > /etc/httpd2/conf/extra/ssl.conf <<'EOF'
-Listen 443
-<VirtualHost _default_:443>
-    DocumentRoot /var/www/html
-    ServerName web.au-team.irpo
-    SSLEngine on
-    SSLCertificateFile /etc/pki/CA/certs/web.au-team.irpo.crt
-    SSLCertificateKeyFile /etc/pki/CA/private/web.au-team.irpo.key
-</VirtualHost>
-EOF
-
-systemctl restart httpd2
-
 # ============================================
 # 5. CUPS принт-сервер
 # ============================================
@@ -142,7 +125,7 @@ cat > /etc/logrotate.d/opt-logs <<'EOF'
 EOF
 
 # ============================================
-# 7. Zabbix сервер
+# 7. Zabbix сервер и агент
 # ============================================
 
 apt-get install -y postgresql17-server zabbix-server-pgsql fping
@@ -191,23 +174,51 @@ DBUser=zabbix
 DBPassword=P@ssw0rd!
 EOF
 
+# Создание пользователя zabbix (если нет)
+useradd zabbix 2>/dev/null
+
+# Создание service файлов для Zabbix вручную
+cat > /lib/systemd/system/zabbix-server.service <<'EOF'
+[Unit]
+Description=Zabbix Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/zabbix_server
+User=zabbix
+Group=zabbix
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /lib/systemd/system/zabbix-agent.service <<'EOF'
+[Unit]
+Description=Zabbix Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/zabbix_agentd
+User=zabbix
+Group=zabbix
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
 systemctl enable --now zabbix-server
+systemctl enable --now zabbix-agent
 
 apt-get install -y zabbix-phpfrontend-apache2 zabbix-phpfrontend-php8.2
 
 if [ -f /etc/httpd2/conf/addon.d/A.zabbix.conf ]; then
     ln -sf /etc/httpd2/conf/addon.d/A.zabbix.conf /etc/httpd2/conf/extra-enabled/ 2>/dev/null
 fi
-
-# Zabbix Agent на HQ-SRV
-apt-get install -y zabbix-agent
-cat > /etc/zabbix/zabbix_agentd.conf <<'EOF'
-Server=127.0.0.1
-ServerActive=127.0.0.1
-Hostname=zabbix_server
-EOF
-
-systemctl enable --now zabbix-agent
 
 # ============================================
 # 9. Fail2ban для SSH
@@ -264,5 +275,25 @@ chmod +x /opt/backup_scripts/*.sh
 
 (crontab -l 2>/dev/null; echo "0 2 * * 0 /opt/backup_scripts/backup_etc.sh") | crontab -
 (crontab -l 2>/dev/null; echo "0 3 * * 0 /opt/backup_scripts/backup_db.sh") | crontab -
+
+# ============================================
+# Настройка Apache для HTTPS
+# ============================================
+
+apt-get install -y apache2-mod_ssl
+a2enmod ssl
+
+cat > /etc/httpd2/conf/extra/ssl.conf <<'EOF'
+Listen 443
+<VirtualHost _default_:443>
+    DocumentRoot /var/www/html
+    ServerName web.au-team.irpo
+    SSLEngine on
+    SSLCertificateFile /etc/pki/CA/certs/web.au-team.irpo.crt
+    SSLCertificateKeyFile /etc/pki/CA/private/web.au-team.irpo.key
+</VirtualHost>
+EOF
+
+systemctl restart httpd2
 
 echo "=== HQ-SRV (Модуль 3) готов ==="
