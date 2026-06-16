@@ -116,6 +116,6 @@ ServerActive=192.168.100.2
 Hostname=br-srv.au-team.irpo
 EOF
 
-systemctl enable --now zabbix-agent
+systemctl enable --now zabbix_agentd.service
 
 echo "=== BR-SRV (Модуль 3) готов ==="
