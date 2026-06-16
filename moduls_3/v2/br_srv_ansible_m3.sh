@@ -22,8 +22,8 @@ EOF
 
 cat > /etc/ansible/hosts <<'EOF'
 [hq_workstations]
-HQ-SRV ansible_host=192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd1! ansible_port=2026
-HQ-CLI ansible_host=192.168.200.4 ansible_user=sshuser ansible_password=P@ssw0rd1! ansible_port=2026
+HQ-SRV ansible_host=192.168.100.2 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
+HQ-CLI ansible_host=192.168.200.4 ansible_user=sshuser ansible_password=P@ssw0rd ansible_port=2026
 EOF
 
 ansible-playbook -i /etc/ansible/hosts /etc/ansible/inventory_hq.yml
