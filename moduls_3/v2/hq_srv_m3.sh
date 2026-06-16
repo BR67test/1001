@@ -52,6 +52,9 @@ $template RemoteLogs, "/opt/%HOSTNAME%/rsyslog.txt"
 & stop
 EOF
 
+# Настройка auth.log для fail2ban
+echo "auth.* /var/log/auth.log" >> /etc/rsyslog.conf
+
 cat > /etc/logrotate.d/opt-logs <<'EOF'
 /opt/*/rsyslog.txt {
     weekly
@@ -65,6 +68,10 @@ cat > /etc/logrotate.d/opt-logs <<'EOF'
 EOF
 
 systemctl restart rsyslog
+
+# Создание auth.log
+touch /var/log/auth.log
+chmod 640 /var/log/auth.log
 
 # ============================================
 # 7. Zabbix сервер
@@ -82,14 +89,6 @@ for SCHEMA in /usr/share/doc/zabbix-common-database-pgsql-*/schema.sql; do
     [ -f "$SCHEMA" ] && su - postgres -c "psql -U zabbix -f $SCHEMA zabbix"
 done
 
-for IMAGES in /usr/share/doc/zabbix-common-database-pgsql-*/images.sql; do
-    [ -f "$IMAGES" ] && su - postgres -c "psql -U zabbix -f $IMAGES zabbix"
-done
-
-for DATA in /usr/share/doc/zabbix-common-database-pgsql-*/data.sql; do
-    [ -f "$DATA" ] && su - postgres -c "psql -U zabbix -f $DATA zabbix"
-done
-
 cat > /etc/zabbix/zabbix_server.conf <<'EOF'
 DBHost=localhost
 DBName=zabbix
@@ -97,7 +96,7 @@ DBUser=zabbix
 DBPassword=P@ssw0rd1!
 EOF
 
-# Создание service файлов
+# Создание service файлов для Zabbix
 cat > /lib/systemd/system/zabbix-server.service <<'EOF'
 [Unit]
 Description=Zabbix Server
@@ -114,18 +113,25 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable --now zabbix-server
+cat > /lib/systemd/system/zabbix-agent.service <<'EOF'
+[Unit]
+Description=Zabbix Agent
+After=network.target
 
-# Zabbix агент на HQ-SRV
-apt-get install -y zabbix-agent
-cat > /etc/zabbix/zabbix_agentd.conf <<'EOF'
-Server=127.0.0.1
-ServerActive=127.0.0.1
-Hostname=zabbix_server
+[Service]
+Type=simple
+ExecStart=/usr/sbin/zabbix_agentd
+User=zabbix
+Group=zabbix
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-systemctl enable --now zabbix_agentd.service
+systemctl daemon-reload
+systemctl enable --now zabbix-server 2>/dev/null
+systemctl enable --now zabbix-agent 2>/dev/null
 
 # Apache для Zabbix
 apt-get install -y apache2 apache2-mod_php8.2 php8.2 php8.2-pgsql php8.2-mbstring php8.2-gd
@@ -144,10 +150,16 @@ EOF
 systemctl restart httpd2
 
 # ============================================
-# 9. Fail2ban
+# 9. Fail2ban (полностью переделано)
 # ============================================
 
+echo "=== Установка и настройка Fail2ban ==="
+
+# Установка
 apt-get install -y fail2ban python3-module-systemd
+
+# Создание конфига
+mkdir -p /etc/fail2ban/jail.d
 
 cat > /etc/fail2ban/jail.d/ssh.conf <<'EOF'
 [DEFAULT]
@@ -162,7 +174,25 @@ filter = sshd
 logpath = /var/log/auth.log
 EOF
 
+# Создание файла настроек для ALT Linux
+cat > /etc/fail2ban/jail.d/altlinux.conf <<'EOF'
+[DEFAULT]
+backend = systemd
+EOF
+
+# Создание auth.log (если нет)
+touch /var/log/auth.log
+chmod 640 /var/log/auth.log
+
+# Перезапуск
+systemctl daemon-reload
 systemctl enable --now fail2ban
+systemctl restart fail2ban
+
+# Проверка
+echo "=== Проверка Fail2ban ==="
+fail2ban-client -t
+fail2ban-client status sshd
 
 # ============================================
 # 10. Кибер Бэкап (сервер)
