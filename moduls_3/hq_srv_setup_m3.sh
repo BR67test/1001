@@ -33,7 +33,6 @@ openssl req -new \
     -out /etc/pki/CA/docker.au-team.irpo.csr \
     -subj "/CN=docker.au-team.irpo"
 
-# Создаём директорию для конфига
 mkdir -p /etc/ssl
 
 cat > /etc/ssl/openssl-ca.cnf <<'EOF'
@@ -74,7 +73,7 @@ openssl ca -batch -config /etc/ssl/openssl-ca.cnf \
     -extensions server_cert \
     -days 30
 
-# Копирование сертификатов на BR-SRV
+# Копирование сертификатов
 scp -P 2026 /etc/pki/CA/certs/docker.au-team.irpo.crt \
     /etc/pki/CA/private/docker.au-team.irpo.key \
     sshuser@192.168.0.2:/etc/pki/CA/ 2>/dev/null
@@ -126,19 +125,26 @@ cat > /etc/logrotate.d/opt-logs <<'EOF'
 EOF
 
 # ============================================
-# 7. Zabbix сервер
+# 7. Zabbix сервер и агент (исправлено)
 # ============================================
 
-apt-get install -y postgresql17-server zabbix-server-pgsql fping
+# Удаление старых пакетов
+apt-get remove -y zabbix-server-pgsql zabbix-agent 2>/dev/null
+apt-get clean
 
+# Установка заново
+apt-get install -y postgresql17-server zabbix-server-pgsql zabbix-agent fping
+
+# Инициализация PostgreSQL
 /etc/init.d/postgresql initdb
 systemctl enable --now postgresql
 sleep 5
 
-# Создание БД (работает без интерактива)
+# Создание БД и пользователя
 su - postgres -c "psql -c \"CREATE USER zabbix WITH PASSWORD 'P@ssw0rd!';\""
 su - postgres -c "psql -c \"CREATE DATABASE zabbix OWNER zabbix;\""
 
+# Импорт схем
 for SCHEMA in /usr/share/doc/zabbix-common-database-pgsql-*/schema.sql; do
     [ -f "$SCHEMA" ] && su - postgres -c "psql -U zabbix -f $SCHEMA zabbix"
 done
@@ -149,6 +155,7 @@ for DATA in /usr/share/doc/zabbix-common-database-pgsql-*/data.sql; do
     [ -f "$DATA" ] && su - postgres -c "psql -U zabbix -f $DATA zabbix"
 done
 
+# PHP и Apache
 apt-get install -y apache2 apache2-mod_php8.2
 apt-get install -y php8.2 php8.2-mbstring php8.2-sockets php8.2-gd \
     php8.2-xmlreader php8.2-pgsql php8.2-ldap php8.2-openssl
@@ -166,6 +173,7 @@ EOF
 
 systemctl restart httpd2
 
+# Настройка Zabbix Server
 cat > /etc/zabbix/zabbix_server.conf <<'EOF'
 DBHost=localhost
 DBName=zabbix
@@ -175,16 +183,30 @@ EOF
 
 # Создание пользователя zabbix
 useradd zabbix 2>/dev/null
+usermod -aG postgres zabbix 2>/dev/null
 
-# Создание service файлов для Zabbix
-cat > /lib/systemd/system/zabbix-server.service <<'EOF'
+# Создание service файлов (с проверкой путей)
+ZABBIX_SERVER=$(find /usr -name "zabbix_server" -type f 2>/dev/null | head -1)
+ZABBIX_AGENT=$(find /usr -name "zabbix_agentd" -type f 2>/dev/null | head -1)
+
+if [ -z "$ZABBIX_SERVER" ]; then
+    echo "Zabbix Server binary not found! Creating dummy service."
+    ZABBIX_SERVER="/usr/sbin/zabbix_server"
+fi
+
+if [ -z "$ZABBIX_AGENT" ]; then
+    echo "Zabbix Agent binary not found! Creating dummy service."
+    ZABBIX_AGENT="/usr/sbin/zabbix_agentd"
+fi
+
+cat > /lib/systemd/system/zabbix-server.service <<EOF
 [Unit]
 Description=Zabbix Server
 After=network.target postgresql.service
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/zabbix_server
+ExecStart=$ZABBIX_SERVER
 User=zabbix
 Group=zabbix
 Restart=on-failure
@@ -193,14 +215,14 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-cat > /lib/systemd/system/zabbix-agent.service <<'EOF'
+cat > /lib/systemd/system/zabbix-agent.service <<EOF
 [Unit]
 Description=Zabbix Agent
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/zabbix_agentd
+ExecStart=$ZABBIX_AGENT
 User=zabbix
 Group=zabbix
 Restart=on-failure
@@ -213,6 +235,7 @@ systemctl daemon-reload
 systemctl enable --now zabbix-server 2>/dev/null
 systemctl enable --now zabbix-agent 2>/dev/null
 
+# Zabbix frontend
 apt-get install -y zabbix-phpfrontend-apache2 zabbix-phpfrontend-php8.2
 
 if [ -f /etc/httpd2/conf/addon.d/A.zabbix.conf ]; then
@@ -297,6 +320,9 @@ Listen 443
     SSLCertificateKeyFile /etc/pki/CA/private/web.au-team.irpo.key
 </VirtualHost>
 EOF
+
+# Добавляем Include в основной конфиг
+grep -q "Include conf/extra/ssl.conf" /etc/httpd2/conf/httpd2.conf || echo "Include conf/extra/ssl.conf" >> /etc/httpd2/conf/httpd2.conf
 
 systemctl restart httpd2
 
