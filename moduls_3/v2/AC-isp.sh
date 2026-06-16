@@ -2,7 +2,7 @@
 echo "=== ЗАБОР СЕРТИФИКАТОВ ИЗ NFS ==="
 
 # Установка NFS клиента
-apt-get update && apt-get install -y nfs-client
+apt-get update && apt-get install -y nfs-clients
 
 # Создание точки монтирования
 mkdir -p /mnt/nfs
