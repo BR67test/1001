@@ -131,7 +131,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now zabbix-server 2>/dev/null
-systemctl enable --now zabbix-agent 2>/dev/null
+systemctl enable --now zabbix_agentd.service 2>/dev/null
 
 # Apache для Zabbix
 apt-get install -y apache2 apache2-mod_php8.2 php8.2 php8.2-pgsql php8.2-mbstring php8.2-gd
