@@ -2,18 +2,12 @@
 echo "=== HQ-SRV (Модуль 3) ==="
 
 # ============================================
-# 2. Центр сертификации (CA) — полностью переделано
+# 0. Подготовка — создание конфига OpenSSL
 # ============================================
 
-apt-get update && apt-get install -y openssl ca-certificates
+apt-get update && apt-get install -y openssl ca-certificates curl
 
-# Создание структуры CA
-mkdir -p /etc/pki/CA/{private,certs,newcerts,crl}
-touch /etc/pki/CA/index.txt
-echo 1000 > /etc/pki/CA/serial
-chmod 777 /etc/pki/CA/private
-
-# Создание конфига CA
+mkdir -p /etc/ssl
 cat > /etc/ssl/openssl-ca.cnf <<'EOF'
 [ ca ]
 default_ca = CA_default
@@ -38,6 +32,15 @@ basicConstraints = CA:FALSE
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 EOF
+
+# ============================================
+# 2. Центр сертификации (CA)
+# ============================================
+
+mkdir -p /etc/pki/CA/{private,certs,newcerts,crl}
+touch /etc/pki/CA/index.txt
+echo 1000 > /etc/pki/CA/serial
+chmod 777 /etc/pki/CA/private
 
 # Корневой сертификат CA
 openssl req -x509 -new -nodes \
@@ -73,7 +76,7 @@ openssl ca -batch -config /etc/ssl/openssl-ca.cnf \
     -extensions server_cert \
     -days 30
 
-# Копирование сертификатов
+# Копирование сертификатов на BR-SRV
 scp -P 2026 /etc/pki/CA/certs/docker.au-team.irpo.crt \
     /etc/pki/CA/private/docker.au-team.irpo.key \
     sshuser@192.168.0.2:/etc/pki/CA/ 2>/dev/null
@@ -125,10 +128,9 @@ cat > /etc/logrotate.d/opt-logs <<'EOF'
 EOF
 
 # ============================================
-# 7. Zabbix сервер (Prometheus вместо Zabbix)
+# 7. Node Exporter (мониторинг)
 # ============================================
 
-# Node Exporter
 useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null
 
 curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
@@ -235,7 +237,7 @@ EOF
 
 grep -q "Include conf/extra/ssl.conf" /etc/httpd2/conf/httpd2.conf || echo "Include conf/extra/ssl.conf" >> /etc/httpd2/conf/httpd2.conf
 
-# Проверка конфига перед перезапуском
+# Проверка конфига и перезапуск
 httpd2 -t
 systemctl restart httpd2
 
