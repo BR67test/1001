@@ -35,7 +35,7 @@ cat > /etc/strongswan/ipsec.secrets <<'EOF'
 EOF
 
 systemctl enable --now strongswan-starter
-systemctl start ipsec
+#systemctl start ipsec
 
 # ============================================
 # 4. Межсетевой экран (nftables)
@@ -107,6 +107,6 @@ Server=192.168.100.2
 ServerActive=192.168.100.2
 EOF
 
-systemctl enable --now zabbix-agent
+systemctl enable --now zabbix_agentd.service
 
 echo "=== HQ-RTR (Модуль 3) готов ==="
