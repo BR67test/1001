@@ -33,6 +33,9 @@ openssl req -new \
     -out /etc/pki/CA/docker.au-team.irpo.csr \
     -subj "/CN=docker.au-team.irpo"
 
+# Создаём директорию для конфига
+mkdir -p /etc/ssl
+
 cat > /etc/ssl/openssl-ca.cnf <<'EOF'
 [ ca ]
 default_ca = CA_default
@@ -59,19 +62,17 @@ extendedKeyUsage = serverAuth
 subjectAltName = DNS:web.au-team.irpo
 EOF
 
-openssl ca -config /etc/ssl/openssl-ca.cnf \
+openssl ca -batch -config /etc/ssl/openssl-ca.cnf \
     -in /etc/pki/CA/web.au-team.irpo.csr \
     -out /etc/pki/CA/certs/web.au-team.irpo.crt \
     -extensions server_cert \
-    -days 30 \
-    -batch
+    -days 30
 
-openssl ca -config /etc/ssl/openssl-ca.cnf \
+openssl ca -batch -config /etc/ssl/openssl-ca.cnf \
     -in /etc/pki/CA/docker.au-team.irpo.csr \
     -out /etc/pki/CA/certs/docker.au-team.irpo.crt \
     -extensions server_cert \
-    -days 30 \
-    -batch
+    -days 30
 
 # Копирование сертификатов на BR-SRV
 scp -P 2026 /etc/pki/CA/certs/docker.au-team.irpo.crt \
@@ -125,20 +126,18 @@ cat > /etc/logrotate.d/opt-logs <<'EOF'
 EOF
 
 # ============================================
-# 7. Zabbix сервер и агент
+# 7. Zabbix сервер
 # ============================================
 
 apt-get install -y postgresql17-server zabbix-server-pgsql fping
 
 /etc/init.d/postgresql initdb
 systemctl enable --now postgresql
+sleep 5
 
-su - postgres -c "createuser --no-superuser --no-createdb --no-createrole --encrypted --pwprompt zabbix" <<'EOF'
-P@ssw0rd!
-P@ssw0rd!
-EOF
-
-su - postgres -c "createdb -O zabbix zabbix"
+# Создание БД (работает без интерактива)
+su - postgres -c "psql -c \"CREATE USER zabbix WITH PASSWORD 'P@ssw0rd!';\""
+su - postgres -c "psql -c \"CREATE DATABASE zabbix OWNER zabbix;\""
 
 for SCHEMA in /usr/share/doc/zabbix-common-database-pgsql-*/schema.sql; do
     [ -f "$SCHEMA" ] && su - postgres -c "psql -U zabbix -f $SCHEMA zabbix"
@@ -174,10 +173,10 @@ DBUser=zabbix
 DBPassword=P@ssw0rd!
 EOF
 
-# Создание пользователя zabbix (если нет)
+# Создание пользователя zabbix
 useradd zabbix 2>/dev/null
 
-# Создание service файлов для Zabbix вручную
+# Создание service файлов для Zabbix
 cat > /lib/systemd/system/zabbix-server.service <<'EOF'
 [Unit]
 Description=Zabbix Server
@@ -211,8 +210,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now zabbix-server
-systemctl enable --now zabbix-agent
+systemctl enable --now zabbix-server 2>/dev/null
+systemctl enable --now zabbix-agent 2>/dev/null
 
 apt-get install -y zabbix-phpfrontend-apache2 zabbix-phpfrontend-php8.2
 
@@ -225,6 +224,8 @@ fi
 # ============================================
 
 apt-get install -y fail2ban python3-module-systemd
+
+mkdir -p /etc/fail2ban/jail.d
 
 cat > /etc/fail2ban/jail.d/ssh.conf <<'EOF'
 [DEFAULT]
@@ -239,7 +240,8 @@ filter = sshd
 logpath = /var/log/auth.log
 EOF
 
-systemctl enable --now fail2ban
+systemctl enable --now fail2ban 2>/dev/null
+systemctl restart fail2ban 2>/dev/null
 
 # ============================================
 # 10. Кибер Бэкап (сервер управления)
@@ -282,6 +284,8 @@ chmod +x /opt/backup_scripts/*.sh
 
 apt-get install -y apache2-mod_ssl
 a2enmod ssl
+
+mkdir -p /etc/httpd2/conf/extra
 
 cat > /etc/httpd2/conf/extra/ssl.conf <<'EOF'
 Listen 443
