@@ -13,8 +13,8 @@ useradd sshuser 2>/dev/null
 
 # Установка пароля через passwd (неинтерактивно)
 echo "P@ssw0rd!" | passwd --stdin sshuser 2>/dev/null || \
-printf "sshuser:P@ssw0rd!\n" | chpasswd 2>/dev/null || \
-(echo "sshuser:P@ssw0rd!" | chpasswd)
+printf "sshuser:P@ssw0rd\n" | chpasswd 2>/dev/null || \
+(echo "sshuser:P@ssw0rd" | chpasswd)
 
 # Добавление в группу wheel
 usermod -aG wheel sshuser 2>/dev/null
